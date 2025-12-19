@@ -2,7 +2,7 @@
   "name": "github-copilot-api-vscode",
   "displayName": "GitHub Copilot API Gateway",
   "description": "Expose GitHub Copilot as a local OpenAI-compatible API server. Use any OpenAI SDK, curl, or HTTP client to access Copilot's language models.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": {
     "name": "Suhaib Bin Younis",
     "email": "vscode@suhaib.in",
@@ -41,21 +41,22 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "swagger": "^0.7.5",
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "swagger-ui-dist": "^5.31.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
+    "@types/node": "^22.19.0",
     "@types/vscode": "^1.107.0",
     "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.27.1",
-    "eslint": "^9.39.1",
+    "esbuild": "^0.27.2",
+    "eslint": "^9.39.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.1"
+    "typescript-eslint": "^8.50.0"
   },
   "contributes": {
     "commands": [
@@ -124,7 +125,7 @@
         },
         "githubCopilotApi.server.enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Enable or disable the Copilot API server."
         },
         "githubCopilotApi.server.enableHttp": {
@@ -181,6 +182,52 @@
           },
           "default": [],
           "description": "Regex patterns to redact sensitive information from request history. Each pattern is applied globally and case-insensitively."
+        },
+        "githubCopilotApi.server.ipAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of allowed IP addresses or CIDR ranges. If empty, all IPs are allowed."
+        },
+        "githubCopilotApi.server.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 1,
+          "description": "Request timeout in seconds for Copilot API calls."
+        },
+        "githubCopilotApi.server.maxPayloadSizeMb": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "Maximum allowed request payload size in Megabytes (MB)."
+        },
+        "githubCopilotApi.server.maxConnectionsPerIp": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Maximum number of concurrent connections allowed per IP address."
+        },
+        "githubCopilotApi.audit.retentionDays": {
+          "type": "number",
+          "default": 30,
+          "description": "Number of days to retain audit logs. Set to 0 to disable automatic deletion."
+        },
+        "githubCopilotApi.audit.logRequestBodies": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to log full request and response bodies in the audit trail. WARNING: This may log sensitive data."
+        },
+        "githubCopilotApi.mcp.servers": {
+          "type": "object",
+          "default": {},
+          "description": "Configuration for MCP (Model Context Protocol) servers. Map server names to their configurations (command, args, env, or url for SSE)."
+        },
+        "githubCopilotApi.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable MCP support globally."
         }
       }
     }

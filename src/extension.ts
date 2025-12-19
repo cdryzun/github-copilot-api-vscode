@@ -9,10 +9,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(output);
 
 	const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-	statusItem.text = '$(broadcast) Copilot API: Starting…';
-	statusItem.tooltip = 'Manage the Copilot API gateway';
 	statusItem.command = 'github-copilot-api-vscode.showServerControls';
-	statusItem.show();
 	context.subscriptions.push(statusItem);
 
 	const gateway = new CopilotApiGateway(output, statusItem, context);
@@ -23,12 +20,27 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
 	);
 
-	void gateway.start().catch(error => {
-		output.appendLine(`[${new Date().toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error)}`);
-		statusItem.text = '$(alert) Copilot API: Failed';
-		statusItem.tooltip = `Copilot API server failed to start: ${getErrorMessage(error)}`;
-		void vscode.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error)}`);
-	});
+	// Start if enabled
+	const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
+	const enabled = config.get('enabled', false);
+	output.appendLine(`[DEBUG] Extension activation. Config 'enabled': ${enabled}`);
+
+	if (enabled) {
+		statusItem.text = '$(broadcast) Copilot API: Starting…';
+		statusItem.tooltip = 'Manage the Copilot API gateway';
+		statusItem.show();
+
+		void gateway.start().catch(error => {
+			output.appendLine(`[${new Date().toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error)}`);
+			statusItem.text = '$(alert) Copilot API: Failed';
+			statusItem.tooltip = `Copilot API server failed to start: ${getErrorMessage(error)}`;
+			void vscode.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error)}`);
+		});
+	} else {
+		statusItem.text = '$(circle-slash) Copilot API: Stopped';
+		statusItem.tooltip = 'Copilot API server is disabled (default)';
+		statusItem.hide();
+	}
 
 	const openChatCommand = vscode.commands.registerCommand('github-copilot-api-vscode.openCopilotChat', async () => {
 		if (!await ensureCopilotChatReady()) {

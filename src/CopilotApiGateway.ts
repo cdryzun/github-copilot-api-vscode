@@ -3,6 +3,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import type { AddressInfo } from 'net';
 import * as os from 'os';
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { AuditService, AuditEntry } from './services/AuditService';
+import { McpService } from './McpService';
 import type { RawData, WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
 
@@ -22,6 +27,31 @@ export class ApiError extends Error {
 	}
 }
 
+// Redaction pattern with toggle support
+export interface RedactionPattern {
+	id: string;
+	name: string;
+	pattern: string;
+	enabled: boolean;
+	isBuiltin: boolean;
+}
+
+// Default redaction patterns - enabled by default
+export const DEFAULT_REDACTION_PATTERNS: RedactionPattern[] = [
+	{ id: 'ssn', name: 'US Social Security', pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b', enabled: true, isBuiltin: true },
+	{ id: 'credit-card', name: 'Credit/Debit Card', pattern: '\\b(?:\\d{4}[- ]?){3}\\d{4}\\b', enabled: true, isBuiltin: true },
+	{ id: 'aadhaar', name: 'Aadhaar Number', pattern: '\\b\\d{4}\\s?\\d{4}\\s?\\d{4}\\b', enabled: true, isBuiltin: true },
+	{ id: 'passport-in', name: 'Indian Passport', pattern: '\\b[A-Z]\\d{7}\\b', enabled: true, isBuiltin: true },
+	{ id: 'passport-us', name: 'US Passport', pattern: '\\b\\d{9}\\b', enabled: true, isBuiltin: true },
+	{ id: 'email', name: 'Email Address', pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}', enabled: true, isBuiltin: true },
+	{ id: 'url', name: 'URLs', pattern: 'https?://[^\\s]+', enabled: true, isBuiltin: true },
+	{ id: 'phone-us', name: 'US Phone Number', pattern: '\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b', enabled: true, isBuiltin: true },
+	{ id: 'phone-in', name: 'Indian Phone', pattern: '\\b[6-9]\\d{9}\\b', enabled: true, isBuiltin: true },
+	{ id: 'api-key', name: 'API Keys', pattern: '(sk-[a-zA-Z0-9]{20,})|(api[_-]?key[=:]\\s*[\\w-]+)', enabled: true, isBuiltin: true },
+	{ id: 'password-json', name: 'Passwords in JSON', pattern: '"password"\\s*:\\s*"[^"]*"', enabled: true, isBuiltin: true },
+	{ id: 'bearer-token', name: 'Bearer Tokens', pattern: 'Bearer\\s+[A-Za-z0-9\\-._~+/]+=*', enabled: true, isBuiltin: true },
+];
+
 export interface ApiServerConfig {
 	enabled: boolean
 	enableHttp: boolean
@@ -34,7 +64,12 @@ export interface ApiServerConfig {
 	enableLogging: boolean
 	rateLimitPerMinute: number
 	defaultSystemPrompt: string
-	redactionPatterns: string[] // Regex patterns to redact sensitive data
+	redactionPatterns: RedactionPattern[] // Named patterns with toggle support
+	ipAllowlist: string[] // List of allowed IPs or CIDR ranges
+	requestTimeoutSeconds: number
+	maxPayloadSizeMb: number
+	maxConnectionsPerIp: number
+	mcpEnabled: boolean
 }
 
 // Request history entry
@@ -68,10 +103,62 @@ const MODEL_ALIASES: Record<string, string> = {
 	'claude-3.5-sonnet': 'claude-3.5-sonnet-copilot',
 	'o1': 'o1-copilot',
 	'o1-mini': 'o1-mini-copilot',
+	'gemini-1.5-pro': 'gpt-4o-copilot',
+	'gemini-1.5-flash': 'gpt-4o-mini-copilot',
 	'o1-preview': 'o1-copilot',
 	'o3-mini': 'o3-mini-copilot'
 };
 
+// --- Anthropic API Interfaces ---
+export interface AnthropicMessageRequest {
+	model: string;
+	messages: { role: 'user' | 'assistant'; content: string | { type: 'text'; text: string }[] }[];
+	system?: string;
+	max_tokens?: number;
+	stop_sequences?: string[];
+	stream?: boolean;
+	temperature?: number;
+	top_p?: number;
+	top_k?: number;
+}
+
+export interface AnthropicMessageResponse {
+	id: string;
+	type: 'message';
+	role: 'assistant';
+	content: { type: 'text'; text: string }[];
+	model: string;
+	stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence';
+	stop_sequence: string | null;
+	usage: { input_tokens: number; output_tokens: number };
+}
+
+// --- Google Generative AI Interfaces ---
+export interface GoogleGenerateContentRequest {
+	contents: { role?: string; parts: { text: string }[] }[];
+	systemInstruction?: { parts: { text: string }[] };
+	generationConfig?: {
+		stopSequences?: string[];
+		maxOutputTokens?: number;
+		temperature?: number;
+		topP?: number;
+		topK?: number;
+	};
+}
+
+export interface GoogleGenerateContentResponse {
+	candidates: {
+		content: { role: string; parts: { text: string }[] };
+		finishReason?: 'STOP' | 'MAX_TOKENS' | 'SAFETY' | 'RECITATION' | 'OTHER';
+		index: number;
+		safetyRatings?: { category: string; probability: string }[];
+	}[];
+	usageMetadata?: {
+		promptTokenCount: number;
+		candidatesTokenCount: number;
+		totalTokenCount: number;
+	};
+}
 type ChatEndpointContext = {
 	source: 'http' | 'websocket'
 	endpoint: '/v1/chat/completions' | '/v1/completions'
@@ -87,6 +174,12 @@ export class CopilotApiGateway implements vscode.Disposable {
 	private suppressRestart = false;
 	private readonly _onDidChangeStatus = new vscode.EventEmitter<void>();
 	public readonly onDidChangeStatus = this._onDidChangeStatus.event;
+	private readonly _onDidLogRequest = new vscode.EventEmitter<AuditEntry>();
+	public readonly onDidLogRequest = this._onDidLogRequest.event;
+
+	// Domain cache for IP allowlist (maps domain names to resolved IPs)
+	private domainCache = new Map<string, string[]>();
+	private domainRefreshInterval: NodeJS.Timeout | undefined;
 
 	// Usage statistics
 	private usageStats = {
@@ -110,6 +203,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 	// Request history (stored in memory, persisted to globalState)
 	private requestHistory: RequestHistoryEntry[] = [];
+	private connections: Set<ServerResponse> = new Set();
+	private isShuttingDown: boolean = false;
 	private readonly MAX_HISTORY_SIZE = 100;
 	private context?: vscode.ExtensionContext;
 
@@ -123,10 +218,20 @@ export class CopilotApiGateway implements vscode.Disposable {
 	// Stats update interval
 	private statsInterval?: ReturnType<typeof setInterval>;
 
-	constructor(private readonly output: vscode.OutputChannel, private readonly statusItem: vscode.StatusBarItem, context?: vscode.ExtensionContext) {
+	// Production hardening
+	private activeConnectionsPerIp = new Map<string, number>();
+
+	private auditService: AuditService;
+	private mcpService: McpService;
+
+	constructor(private readonly output: vscode.OutputChannel, private readonly statusItem: vscode.StatusBarItem, context: vscode.ExtensionContext) {
 		this.context = context;
+		this.auditService = new AuditService(context);
+		this.mcpService = new McpService(output);
+		this.mcpService.initialize().catch(err => console.error('Failed to initialize MCP:', err));
 		this.loadHistory();
 		this.startStatsUpdater();
+		this.startDomainCacheRefresh();
 
 		const subscription = vscode.workspace.onDidChangeConfiguration(event => {
 			if (event.affectsConfiguration('githubCopilotApi.server')) {
@@ -139,19 +244,76 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 		});
 		this.disposables.push(subscription);
+
+		// Initialize stats from persistent storage
+		this.initializeStats().catch(err => console.error('Failed to initialize stats:', err));
 	}
 
-    public get status() {
-        return {
-            running: !!this.httpServer,
-            config: this.config,
-            activeRequests: this.activeRequests,
-            networkInfo: this.getNetworkInfo(),
-            stats: this.getStats(),
-            realtimeStats: this.realtimeStats,
-            historyCount: this.requestHistory.length
-        };
-    }
+	private async initializeStats() {
+		try {
+			const lifetime = await this.auditService.getLifetimeStats();
+			this.usageStats.totalRequests = lifetime.totalRequests;
+			this.usageStats.totalTokensIn = lifetime.totalTokensIn;
+			this.usageStats.totalTokensOut = lifetime.totalTokensOut;
+		} catch (error) {
+			console.error('Failed to load lifetime stats:', error);
+		}
+	}
+
+	public async getStatus() {
+		return {
+			running: !!this.httpServer,
+			config: this.config,
+			activeRequests: this.activeRequests,
+			networkInfo: this.getNetworkInfo(),
+			stats: this.getStats(),
+			realtimeStats: this.realtimeStats,
+			historyCount: this.requestHistory.length,
+			mcp: this.getMcpStatus(),
+			copilot: await this.getCopilotHealth()
+		};
+	}
+
+	public async getCopilotHealth() {
+		// More robust detection: scan all extensions for ID match (case-insensitive) or explicit name match
+		const allExtensions = vscode.extensions.all;
+		const copilotExt = allExtensions.find(e =>
+			e.id.toLowerCase() === 'github.copilot' ||
+			e.id.toLowerCase() === 'github.copilot-nightly' ||
+			(e.packageJSON?.publisher === 'GitHub' && e.packageJSON?.name === 'copilot')
+		);
+		const copilotChatExt = allExtensions.find(e =>
+			e.id.toLowerCase() === 'github.copilot-chat' ||
+			(e.packageJSON?.publisher === 'GitHub' && e.packageJSON?.name === 'copilot-chat')
+		);
+
+		let signedIn = false;
+		try {
+			const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			signedIn = models && models.length > 0;
+		} catch (e) {
+			signedIn = false;
+		}
+
+		// If we are signed in (meaning we found models), we are functionally ready
+		// regardless of whether we could strictly identify the extension ID.
+		const isReady = signedIn || (!!copilotExt && !!copilotChatExt && signedIn);
+
+		return {
+			installed: !!copilotExt || signedIn,
+			chatInstalled: !!copilotChatExt || signedIn,
+			signedIn: signedIn,
+			ready: isReady
+		};
+	}
+
+	public getMcpStatus() {
+		return {
+			enabled: vscode.workspace.getConfiguration('githubCopilotApi.mcp').get<boolean>('enabled', true),
+			servers: this.mcpService.getConnectedServers(),
+			tools: this.mcpService.getTools()
+		};
+	}
 
 	/**
 	 * Get combined usage statistics
@@ -172,6 +334,18 @@ export class CopilotApiGateway implements vscode.Disposable {
 	public getHistory(limit?: number): RequestHistoryEntry[] {
 		const entries = [...this.requestHistory].reverse(); // Most recent first
 		return limit ? entries.slice(0, limit) : entries;
+	}
+
+	public async getDailyStats(days: number): Promise<any[]> {
+		return this.auditService.getDailyStats(days);
+	}
+
+	public async getAuditLogs(page: number, pageSize: number): Promise<{ total: number, entries: AuditEntry[] }> {
+		return this.auditService.getLogEntries(page, pageSize);
+	}
+
+	public getLogFolderPath(): string {
+		return this.auditService.getLogFolderPath();
 	}
 
 	/**
@@ -229,15 +403,17 @@ export class CopilotApiGateway implements vscode.Disposable {
 	 * Apply redaction patterns to sensitive data
 	 */
 	private redactSensitiveData<T>(data: T): T {
-		if (!this.config.redactionPatterns.length) {
+		const enabledPatterns = this.config.redactionPatterns.filter(p => p.enabled);
+		console.log(`[Redaction] ${this.config.redactionPatterns.length} total patterns, ${enabledPatterns.length} enabled`);
+		if (!enabledPatterns.length) {
 			return data;
 		}
 
 		const redact = (str: string): string => {
 			let result = str;
-			for (const pattern of this.config.redactionPatterns) {
+			for (const patternObj of enabledPatterns) {
 				try {
-					const regex = new RegExp(pattern, 'gi');
+					const regex = new RegExp(patternObj.pattern, 'gi');
 					result = result.replace(regex, '[REDACTED]');
 				} catch {
 					// Invalid regex, skip
@@ -267,6 +443,74 @@ export class CopilotApiGateway implements vscode.Disposable {
 	}
 
 	/**
+	 * Redact sensitive content from chat messages BEFORE sending to Copilot
+	 * This prevents confidential data from ever leaving the user's machine
+	 */
+	private redactMessagesContent(
+		messages: Array<{ role: string; content: unknown; tool_calls?: any[]; tool_call_id?: string }>
+	): Array<{ role: string; content: unknown; tool_calls?: any[]; tool_call_id?: string }> {
+		const enabledPatterns = this.config.redactionPatterns.filter(p => p.enabled);
+		if (!enabledPatterns.length) {
+			return messages;
+		}
+
+		const redactString = (str: string): string => {
+			let result = str;
+			for (const patternObj of enabledPatterns) {
+				try {
+					const regex = new RegExp(patternObj.pattern, 'gi');
+					result = result.replace(regex, '[REDACTED]');
+				} catch {
+					// Invalid regex, skip
+				}
+			}
+			return result;
+		};
+
+		return messages.map(msg => {
+			let content = msg.content;
+
+			if (typeof content === 'string') {
+				content = redactString(content);
+			} else if (Array.isArray(content)) {
+				// Handle array content (multi-modal messages)
+				content = content.map(part => {
+					if (typeof part === 'string') {
+						return redactString(part);
+					}
+					if (part && typeof part === 'object' && typeof part.text === 'string') {
+						return { ...part, text: redactString(part.text) };
+					}
+					return part;
+				});
+			}
+
+			return { ...msg, content };
+		});
+	}
+
+	/**
+	 * Redact a simple string prompt before sending to Copilot
+	 */
+	private redactPromptString(prompt: string): string {
+		const enabledPatterns = this.config.redactionPatterns.filter(p => p.enabled);
+		if (!enabledPatterns.length) {
+			return prompt;
+		}
+
+		let result = prompt;
+		for (const patternObj of enabledPatterns) {
+			try {
+				const regex = new RegExp(patternObj.pattern, 'gi');
+				result = result.replace(regex, '[REDACTED]');
+			} catch {
+				// Invalid regex, skip
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * Start the real-time stats updater
 	 */
 	private startStatsUpdater(): void {
@@ -274,6 +518,19 @@ export class CopilotApiGateway implements vscode.Disposable {
 		this.statsInterval = setInterval(() => {
 			this.updateRealtimeStats();
 		}, 5000);
+	}
+
+	/**
+	 * Start periodic domain cache refresh for IP allowlist
+	 */
+	private startDomainCacheRefresh(): void {
+		// Refresh immediately on startup
+		void this.refreshDomainCache();
+
+		// Then refresh every 5 minutes
+		this.domainRefreshInterval = setInterval(() => {
+			void this.refreshDomainCache();
+		}, 5 * 60 * 1000);
 	}
 
 	/**
@@ -346,15 +603,21 @@ export class CopilotApiGateway implements vscode.Disposable {
 	}
 
 	/**
-	 * Add a redaction pattern
+	 * Add a custom redaction pattern
 	 */
-	public async addRedactionPattern(pattern: string): Promise<boolean> {
+	public async addRedactionPattern(name: string, pattern: string): Promise<boolean> {
 		try {
-			// Validate regex
-			new RegExp(pattern);
-			const patterns = [...this.config.redactionPatterns, pattern];
-			const config = vscode.workspace.getConfiguration('githubCopilotApi');
-			await config.update('server.redactionPatterns', patterns, vscode.ConfigurationTarget.Global);
+			new RegExp(pattern); // Validate regex
+			const patterns = this.config.redactionPatterns;
+			const id = `custom-${Date.now()}`;
+			const newPattern: RedactionPattern = {
+				id,
+				name,
+				pattern,
+				enabled: true,
+				isBuiltin: false
+			};
+			await this.updateServerConfig({ redactionPatterns: [...patterns, newPattern] });
 			return true;
 		} catch {
 			return false;
@@ -362,48 +625,89 @@ export class CopilotApiGateway implements vscode.Disposable {
 	}
 
 	/**
-	 * Remove a redaction pattern
+	 * Remove a redaction pattern by ID
 	 */
-	public async removeRedactionPattern(index: number): Promise<void> {
-		const patterns = [...this.config.redactionPatterns];
-		patterns.splice(index, 1);
-		const config = vscode.workspace.getConfiguration('githubCopilotApi');
-		await config.update('server.redactionPatterns', patterns, vscode.ConfigurationTarget.Global);
+	public async removeRedactionPattern(id: string): Promise<void> {
+		const patterns = this.config.redactionPatterns.filter(p => p.id !== id);
+		await this.updateServerConfig({ redactionPatterns: patterns });
+	}
+
+	/**
+	 * Toggle a redaction pattern on/off
+	 */
+	public async toggleRedactionPattern(id: string, enabled: boolean): Promise<void> {
+		const patterns = this.config.redactionPatterns.map(p =>
+			p.id === id ? { ...p, enabled } : p
+		);
+		await this.updateServerConfig({ redactionPatterns: patterns });
 	}
 
 	/**
 	 * Get current redaction patterns
 	 */
-	public getRedactionPatterns(): string[] {
+	public getRedactionPatterns(): RedactionPattern[] {
 		return [...this.config.redactionPatterns];
 	}
 
-    /**
-     * Get network information when bound to 0.0.0.0 (all interfaces)
-     * Returns hostname and local IP addresses that can be shared with others
-     */
-    private getNetworkInfo(): { hostname: string; localIPs: string[] } | null {
-        if (this.config.host !== '0.0.0.0') {
-            return null;
-        }
+	/**
+	 * Add an IP allowlist entry
+	 */
+	public async addIpAllowlistEntry(entry: string): Promise<boolean> {
+		const value = entry.trim();
+		if (!value) {
+			return false;
+		}
 
-        const hostname = os.hostname();
-        const localIPs: string[] = [];
-        const interfaces = os.networkInterfaces();
+		// Validation: allow IPs, CIDRs, and domain names
+		// IP/CIDR: digits, dots, colons, slashes
+		// Domain: alphanumeric, dots, hyphens (must have at least one dot for domains)
+		const isIpOrCidr = /^[\d\.\/]+$|^[\da-fA-F:\/]+$/.test(value);
+		const isDomain = /^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)+$/.test(value);
 
-        for (const name of Object.keys(interfaces)) {
-            const netInterface = interfaces[name];
-            if (!netInterface) {continue;}
-            for (const info of netInterface) {
-                // Skip internal/loopback and IPv6 addresses for simplicity
-                if (!info.internal && info.family === 'IPv4') {
-                    localIPs.push(info.address);
-                }
-            }
-        }
+		if (!isIpOrCidr && !isDomain) {
+			return false;
+		}
 
-        return { hostname, localIPs };
-    }
+		const list = [...this.config.ipAllowlist, value];
+		const config = vscode.workspace.getConfiguration('githubCopilotApi');
+		await config.update('server.ipAllowlist', list, vscode.ConfigurationTarget.Global);
+		return true;
+	}
+
+	/**
+	 * Remove an IP allowlist entry
+	 */
+	public async removeIpAllowlistEntry(ipOrCidr: string): Promise<void> {
+		const ips = this.config.ipAllowlist.filter(ip => ip !== ipOrCidr);
+		await this.updateServerConfig({ ipAllowlist: ips });
+	}
+
+	/**
+	 * Get network information when bound to 0.0.0.0 (all interfaces)
+	 * Returns hostname and local IP addresses that can be shared with others
+	 */
+	private getNetworkInfo(): { hostname: string; localIPs: string[] } | null {
+		if (this.config.host !== '0.0.0.0') {
+			return null;
+		}
+
+		const hostname = os.hostname();
+		const localIPs: string[] = [];
+		const interfaces = os.networkInterfaces();
+
+		for (const name of Object.keys(interfaces)) {
+			const netInterface = interfaces[name];
+			if (!netInterface) { continue; }
+			for (const info of netInterface) {
+				// Skip internal/loopback and IPv6 addresses for simplicity
+				if (!info.internal && info.family === 'IPv4') {
+					localIPs.push(info.address);
+				}
+			}
+		}
+
+		return { hostname, localIPs };
+	}
 
 	public async startServer(): Promise<void> {
 		await this.updateServerConfig({ enabled: true });
@@ -428,16 +732,15 @@ export class CopilotApiGateway implements vscode.Disposable {
 	public async setApiKey(apiKey: string): Promise<void> {
 		const value = (apiKey ?? '').trim();
 		await this.updateServerConfig({ apiKey: value });
-		if (value) {
-			void vscode.window.showInformationMessage(`API key set. Use "Authorization: Bearer ${value}" to authenticate.`);
-		} else {
-			void vscode.window.showInformationMessage('API key cleared. Server is now open access.');
-		}
 	}
 
 	public async setRateLimit(limit: number): Promise<void> {
 		const normalized = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 60;
 		await this.updateServerConfig({ rateLimitPerMinute: normalized });
+	}
+
+	public getVersion(): string {
+		return this.context?.extension.packageJSON.version || '0.0.1';
 	}
 
 	public async setHost(host: string): Promise<void> {
@@ -453,12 +756,40 @@ export class CopilotApiGateway implements vscode.Disposable {
 		await this.updateServerConfig({ port: normalized, enabled: true });
 	}
 
+	public async toggleMcp(enabled: boolean): Promise<void> {
+		this.suppressRestart = true;
+		await vscode.workspace.getConfiguration('githubCopilotApi.mcp').update('enabled', enabled, vscode.ConfigurationTarget.Global);
+		await this.mcpService.refreshServers();
+		this.config.mcpEnabled = enabled; // Update local config
+		this.suppressRestart = false;
+	}
+
 	public async setDefaultModel(model: string): Promise<void> {
 		const value = (model ?? '').trim();
 		if (!value) {
 			return;
 		}
 		await this.updateServerConfig({ defaultModel: value, enabled: true });
+	}
+
+	public async setRequestTimeout(seconds: number): Promise<void> {
+		const normalized = Number.isFinite(seconds) ? Math.max(1, Math.floor(seconds)) : 180;
+		await this.updateServerConfig({ requestTimeoutSeconds: normalized });
+	}
+
+	public async setMaxPayloadSize(mb: number): Promise<void> {
+		const normalized = Number.isFinite(mb) ? Math.max(1, Math.floor(mb)) : 1;
+		await this.updateServerConfig({ maxPayloadSizeMb: normalized });
+	}
+
+	public async setMaxConnectionsPerIp(limit: number): Promise<void> {
+		const normalized = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 10;
+		await this.updateServerConfig({ maxConnectionsPerIp: normalized });
+	}
+
+	public async setMaxConcurrency(limit: number): Promise<void> {
+		const normalized = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 4;
+		await this.updateServerConfig({ maxConcurrentRequests: normalized });
 	}
 
 	async start(): Promise<void> {
@@ -470,14 +801,18 @@ export class CopilotApiGateway implements vscode.Disposable {
 		this.config = getServerConfig();
 		if (!this.config.enabled) {
 			this.updateStatusBar('stopped', 'Server disabled in settings');
-            this._onDidChangeStatus.fire();
+			this._onDidChangeStatus.fire();
 			return;
 		}
 
 		this.updateStatusBar('starting');
-        this._onDidChangeStatus.fire();
+		this._onDidChangeStatus.fire();
 
 		this.httpServer = createServer((req, res) => {
+			// Track active connections for graceful shutdown
+			this.connections.add(res);
+			res.on('close', () => this.connections.delete(res));
+
 			const requestStart = Date.now();
 			const requestId = randomUUID().slice(0, 8);
 
@@ -485,12 +820,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 				const duration = Date.now() - requestStart;
 				if (error instanceof ApiError) {
 					this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', error.status, duration, {
-						error: error.message
+						error: error.message,
+						requestHeaders: req.headers
 					});
 					this.sendError(res, error);
 				} else {
 					this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', 500, duration, {
-						error: error instanceof Error ? error.message : String(error)
+						error: error instanceof Error ? error.message : String(error),
+						requestHeaders: req.headers
 					});
 					this.logError('Unhandled error in HTTP request handler', error);
 					this.sendError(res, new ApiError(500, 'An unexpected error occurred.', 'server_error'));
@@ -540,8 +877,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			const location = `http://${address.address}:${address.port}`;
 			this.logInfo(`HTTP server listening on ${location}`);
 			this.updateStatusBar('running', `HTTP${this.config.enableWebSocket ? '+WS' : ''} on ${location}`);
-			void vscode.window.showInformationMessage(`Copilot API server listening on ${location}`);
-            this._onDidChangeStatus.fire();
+			this._onDidChangeStatus.fire();
 		}
 	}
 
@@ -577,11 +913,13 @@ export class CopilotApiGateway implements vscode.Disposable {
 		this.wsServer = undefined;
 		this.activeRequests = 0;
 		this.updateStatusBar('stopped');
-        this._onDidChangeStatus.fire();
+		this._onDidChangeStatus.fire();
 	}
 
-	dispose(): void {
+	public async dispose(): Promise<void> {
 		this.disposed = true;
+		this.isShuttingDown = true;
+		this.logInfo('Shutting down API Gateway...');
 
 		// Stop stats updater
 		if (this.statsInterval) {
@@ -589,20 +927,61 @@ export class CopilotApiGateway implements vscode.Disposable {
 			this.statsInterval = undefined;
 		}
 
+		// Stop domain cache refresh
+		if (this.domainRefreshInterval) {
+			clearInterval(this.domainRefreshInterval);
+			this.domainRefreshInterval = undefined;
+		}
+
 		// Save history before disposing
 		this.saveHistory();
 
-		void this.stop().catch(error => {
+		// Wait a bit for active requests to finish
+		if (this.activeRequests > 0) {
+			this.logInfo(`Waiting for ${this.activeRequests} active requests to complete...`);
+			let waitTime = 0;
+			while (this.activeRequests > 0 && waitTime < 3000) { // Max 3 seconds wait
+				await new Promise(resolve => setTimeout(resolve, 100));
+				waitTime += 100;
+			}
+			if (this.activeRequests > 0) {
+				this.logInfo(`Forcing close of ${this.activeRequests} remaining requests.`);
+			}
+		}
+
+		// Close all open HTTP connections
+		for (const res of this.connections) {
+			if (!res.writableEnded) {
+				res.writeHead(503, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: { message: 'Server is shutting down', type: 'service_unavailable' } }));
+			}
+		}
+		this.connections.clear();
+
+		await this.stop().catch(error => {
 			this.logError('Failed to stop API server during dispose', error);
 		});
+
 		for (const disposable of this.disposables.splice(0)) {
 			disposable.dispose();
 		}
-        this._onDidChangeStatus.dispose();
+		await this.mcpService.dispose();
+		this._onDidChangeStatus.dispose();
+		this.logInfo('API Gateway shut down successfully.');
 	}
 
 	private async handleHttpRequest(req: IncomingMessage, res: ServerResponse, requestId: string, requestStart: number): Promise<void> {
+		if (this.isShuttingDown) {
+			res.writeHead(503, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: { message: 'Server is shutting down', type: 'service_unavailable' } }));
+			return;
+		}
+
 		this.setCorsHeaders(res);
+
+		// Add X-Request-ID header for debugging
+		res.setHeader('X-Request-ID', requestId);
+
 		if (req.method === 'OPTIONS') {
 			res.writeHead(204);
 			res.end();
@@ -615,29 +994,88 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 		const url = this.buildUrl(req.url);
 
+		// Get client IP for rate limiting
+		const clientIp = this.getClientIp(req);
+
+		// Per-IP connection limiting
+		const currentConnections = this.activeConnectionsPerIp.get(clientIp) || 0;
+		if (currentConnections >= this.config.maxConnectionsPerIp) {
+			this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 429, Date.now() - requestStart, {
+				requestHeaders: req.headers
+			});
+			throw new ApiError(429, `Too many connections from your IP. Maximum ${this.config.maxConnectionsPerIp} concurrent connections allowed.`, 'rate_limit_error', 'too_many_connections');
+		}
+		this.activeConnectionsPerIp.set(clientIp, currentConnections + 1);
+
+		// Ensure we decrement the counter when the request ends
+		res.on('close', () => {
+			const count = this.activeConnectionsPerIp.get(clientIp) || 1;
+			if (count <= 1) {
+				this.activeConnectionsPerIp.delete(clientIp);
+			} else {
+				this.activeConnectionsPerIp.set(clientIp, count - 1);
+			}
+		});
+
 		// Authentication check (skip for health endpoint)
 		if (this.config.apiKey && url.pathname !== '/health') {
 			const authHeader = req.headers['authorization'];
 			const providedKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 			if (providedKey !== this.config.apiKey) {
-				this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 401, Date.now() - requestStart);
+				this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 401, Date.now() - requestStart, {
+					requestHeaders: req.headers
+				});
 				throw new ApiError(401, 'Invalid or missing API key. Provide a valid Bearer token.', 'authentication_error', 'invalid_api_key');
 			}
 		}
 
 		// Rate limiting check
 		if (!this.checkRateLimit()) {
-			this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 429, Date.now() - requestStart);
+			this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 429, Date.now() - requestStart, {
+				requestHeaders: req.headers
+			});
 			throw new ApiError(429, 'Rate limit exceeded. Please try again later.', 'rate_limit_error', 'rate_limit_exceeded');
+		}
+
+		// IP Allowlist check
+		if (!this.checkIpAllowlist(req)) {
+			this.logRequest(requestId, req.method || 'UNKNOWN', url.pathname, 403, Date.now() - requestStart, {
+				requestHeaders: req.headers
+			});
+			throw new ApiError(403, 'Access denied. Your IP address is not allowed.', 'access_denied', 'ip_not_allowed');
 		}
 
 		// Track request
 		this.usageStats.totalRequests++;
 		this.usageStats.requestsByEndpoint[url.pathname] = (this.usageStats.requestsByEndpoint[url.pathname] || 0) + 1;
 
-		// Health check
+		// Enhanced health check - verify Copilot is actually available
 		if (req.method === 'GET' && url.pathname === '/health') {
-			this.sendJson(res, 200, { status: 'ok', service: 'github-copilot-api-vscode' });
+			try {
+				const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+				if (models && models.length > 0) {
+					this.sendJson(res, 200, {
+						status: 'ok',
+						service: 'github-copilot-api-vscode',
+						copilot: 'available',
+						models: models.length
+					});
+				} else {
+					this.sendJson(res, 200, {
+						status: 'degraded',
+						service: 'github-copilot-api-vscode',
+						copilot: 'unavailable',
+						message: 'No Copilot models found. Check if GitHub Copilot is installed and signed in.'
+					});
+				}
+			} catch {
+				this.sendJson(res, 200, {
+					status: 'degraded',
+					service: 'github-copilot-api-vscode',
+					copilot: 'error',
+					message: 'Failed to check Copilot availability.'
+				});
+			}
 			return;
 		}
 
@@ -647,9 +1085,20 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
+		// Local diagnostics
+		if (req.method === 'GET' && url.pathname === '/debug-paths') {
+			this.sendDebugPaths(res);
+			return;
+		}
+
 		// Swagger UI documentation
 		if (req.method === 'GET' && url.pathname === '/docs') {
 			this.sendSwaggerUi(res);
+			return;
+		}
+
+		if (req.method === 'GET' && url.pathname.startsWith('/swagger-ui/')) {
+			this.serveStaticFile(req, res, url.pathname);
 			return;
 		}
 
@@ -694,11 +1143,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		// Chat completions (with optional streaming)
 		if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
 			const body = await this.readJsonBody(req);
 			if (body?.stream === true) {
-				await this.processStreamingChatCompletion(body, res, requestId, requestStart);
+				await this.processStreamingChatCompletion(body, req, res, requestId, requestStart);
 			} else {
 				const response = await this.processChatCompletion(body, { source: 'http', endpoint: '/v1/chat/completions' }) as any;
 				this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
@@ -706,9 +1154,48 @@ export class CopilotApiGateway implements vscode.Disposable {
 					responsePayload: response,
 					tokensIn: response?.usage?.prompt_tokens,
 					tokensOut: response?.usage?.completion_tokens,
-					model: body?.model
+					model: body?.model,
+					requestHeaders: req.headers,
+					responseHeaders: res.getHeaders()
 				});
 				this.sendJson(res, 200, response);
+			}
+			return;
+		}
+
+		// Anthropic Messages API
+		if (req.method === 'POST' && url.pathname === '/v1/messages') {
+			const body = await this.readJsonBody(req) as AnthropicMessageRequest;
+			// Model validation
+			if (body?.model && !this.resolveModel(body.model)) {
+				throw new ApiError(400, `Model '${body.model}' is not supported.`, 'invalid_request_error', 'model_not_found');
+			}
+
+			if (body?.stream === true) {
+				await this.processStreamingAnthropicMessages(body, req, res, requestId, requestStart);
+			} else {
+				try {
+					const response = await this.processAnthropicMessages(body);
+					this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
+						requestPayload: body,
+						responsePayload: response,
+						tokensIn: response?.usage?.input_tokens,
+						tokensOut: response?.usage?.output_tokens,
+						model: body?.model,
+						requestHeaders: req.headers,
+						responseHeaders: res.getHeaders()
+					});
+					this.sendJson(res, 200, response);
+				} catch (error: any) {
+					const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'api_error');
+					this.sendJson(res, apiError.status, {
+						type: 'error',
+						error: {
+							type: apiError.code || 'api_error',
+							message: apiError.message
+						}
+					});
+				}
 			}
 			return;
 		}
@@ -722,7 +1209,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 				responsePayload: response,
 				tokensIn: response?.usage?.prompt_tokens,
 				tokensOut: response?.usage?.completion_tokens,
-				model: body?.model
+				model: body?.model,
+				requestHeaders: req.headers,
+				responseHeaders: res.getHeaders()
 			});
 			this.sendJson(res, 200, response);
 			return;
@@ -735,7 +1224,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 			this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
 				requestPayload: body,
 				responsePayload: response,
-				model: body?.model
+				model: body?.model,
+				requestHeaders: req.headers,
+				responseHeaders: res.getHeaders()
 			});
 			this.sendJson(res, 200, response);
 			return;
@@ -748,22 +1239,70 @@ export class CopilotApiGateway implements vscode.Disposable {
 			this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
 				requestPayload: body,
 				responsePayload: response,
-				model: body?.model
+				model: body?.model,
+				requestHeaders: req.headers,
+				responseHeaders: res.getHeaders()
 			});
 			this.sendJson(res, 200, response);
 			return;
 		}
 
-		// Responses API (new OpenAI format)
+		// Responses API (OpenAI)
 		if (req.method === 'POST' && url.pathname === '/v1/responses') {
 			const body = await this.readJsonBody(req);
 			const response = await this.processResponsesApi(body);
 			this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
 				requestPayload: body,
 				responsePayload: response,
-				model: body?.model
+				tokensIn: (response as any)?.usage?.input_tokens,
+				tokensOut: (response as any)?.usage?.output_tokens,
+				model: body?.model,
+				requestHeaders: req.headers,
+				responseHeaders: res.getHeaders()
 			});
 			this.sendJson(res, 200, response);
+			return;
+		}
+
+		// Google Generative AI API
+		const googleMatch = url.pathname.match(/^\/v1beta\/models\/(.+):generateContent$/);
+		const googleStreamMatch = url.pathname.match(/^\/v1beta\/models\/(.+):streamGenerateContent$/);
+
+		if (req.method === 'POST' && (googleMatch || googleStreamMatch)) {
+			const modelId = decodeURIComponent((googleMatch || googleStreamMatch)![1]);
+			const body = await this.readJsonBody(req) as GoogleGenerateContentRequest;
+
+			// Model validation
+			if (modelId && !this.resolveModel(modelId)) {
+				throw new ApiError(400, `Model '${modelId}' is not supported.`, 'invalid_request_error', 'model_not_found');
+			}
+
+			if (googleStreamMatch) {
+				await this.processStreamingGoogleGenerateContent(modelId, body, req, res, requestId, requestStart);
+			} else {
+				try {
+					const response = await this.processGoogleGenerateContent(modelId, body);
+					this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
+						requestPayload: body,
+						responsePayload: response,
+						tokensIn: response?.usageMetadata?.promptTokenCount,
+						tokensOut: response?.usageMetadata?.candidatesTokenCount,
+						model: modelId,
+						requestHeaders: req.headers,
+						responseHeaders: res.getHeaders()
+					});
+					this.sendJson(res, 200, response);
+				} catch (error: any) {
+					const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'server_error');
+					this.sendJson(res, apiError.status, {
+						error: {
+							code: apiError.status,
+							message: apiError.message,
+							status: apiError.code || 'INTERNAL'
+						}
+					});
+				}
+			}
 			return;
 		}
 
@@ -783,6 +1322,269 @@ export class CopilotApiGateway implements vscode.Disposable {
 		}
 
 		throw new ApiError(404, `No route for ${req.method ?? 'UNKNOWN'} ${url.pathname}`, 'not_found');
+	}
+
+	private async processStreamingGoogleGenerateContent(modelId: string, payload: GoogleGenerateContentRequest, req: IncomingMessage, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
+		const messages: vscode.LanguageModelChatMessage[] = [];
+
+		if (payload.systemInstruction) {
+			const systemText = payload.systemInstruction.parts.map(p => p.text).join(' ');
+			messages.push(vscode.LanguageModelChatMessage.User(this.redactPromptString(systemText)));
+		}
+
+		for (const content of payload.contents) {
+			const role = content.role === 'model' ? vscode.LanguageModelChatMessageRole.Assistant : vscode.LanguageModelChatMessageRole.User;
+			const text = content.parts.map(p => p.text).join(' ');
+			const redactedText = this.redactPromptString(text);
+
+			if (role === vscode.LanguageModelChatMessageRole.User) {
+				messages.push(vscode.LanguageModelChatMessage.User(redactedText));
+			} else {
+				messages.push(vscode.LanguageModelChatMessage.Assistant(redactedText));
+			}
+		}
+
+		const resolvedModel = this.resolveModel(modelId);
+		const promptStr = messages.map(m => {
+			if (typeof m.content === 'string') { return m.content; }
+			return m.content.map(p => {
+				if ('text' in p) { return p.text; }
+				return '';
+			}).join(' ');
+		}).join('\n');
+
+		// Set headers - Google stream is a JSON array of response objects, usually
+		// but since we want to mimic their SDK behavior, we might use EventStream or just chunked JSON
+		// Google's streamGenerateContent typically returns a JSON array over time
+		res.writeHead(200, {
+			'Content-Type': 'application/json',
+			'X-HTTP-Content-Type-Options': 'nosniff',
+			'Transfer-Encoding': 'chunked'
+		});
+
+		let totalContent = '';
+
+		const cts = new vscode.CancellationTokenSource();
+		req.on('close', () => {
+			cts.cancel();
+			console.log(`[Google] Client disconnected, cancelling request ${logRequestId || ''}`);
+		});
+
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+
+			const lmModel = copilotModels[0];
+			const response = await lmModel.sendRequest(messages, {}, cts.token);
+
+			// Google's format is an array of objects
+			res.write('[\n');
+			let firstPart = true;
+
+			for await (const part of response.stream) {
+				if (cts.token.isCancellationRequested) { break; }
+				if (part instanceof vscode.LanguageModelTextPart) {
+					totalContent += part.value;
+					if (!firstPart) {
+						res.write(',\n');
+					}
+					const chunk = {
+						candidates: [{
+							content: {
+								role: 'model',
+								parts: [{ text: part.value }]
+							},
+							finishReason: 'STOP',
+							index: 0
+						}],
+						usageMetadata: {
+							promptTokenCount: 0,
+							candidatesTokenCount: 0,
+							totalTokenCount: 0
+						}
+					};
+					res.write(JSON.stringify(chunk));
+					firstPart = false;
+				}
+			}
+
+			if (!cts.token.isCancellationRequested) {
+				res.write('\n]\n');
+				res.end();
+			}
+
+			// Token counting (best effort for logs)
+			let inputTokens = 0;
+			let outputTokens = 0;
+			try {
+				inputTokens = await lmModel.countTokens(promptStr, cts.token);
+				outputTokens = await lmModel.countTokens(totalContent, cts.token);
+			} catch (e) { }
+
+			if (logRequestId) {
+				this.logRequest(logRequestId, 'POST', `/v1beta/models/${modelId}:streamGenerateContent`, 200, Date.now() - (logRequestStart || 0), {
+					requestPayload: payload,
+					responsePayload: { candidates: [{ content: { parts: [{ text: totalContent }] } }] },
+					tokensIn: inputTokens,
+					tokensOut: outputTokens,
+					model: resolvedModel
+				});
+			}
+
+		} catch (error: any) {
+			if (cts.token.isCancellationRequested) { return; }
+			console.error('Google streaming error:', error);
+			const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'server_error');
+			res.write(JSON.stringify({ error: { code: apiError.status, message: apiError.message, status: apiError.code } }));
+			res.end();
+		} finally {
+			cts.dispose();
+		}
+	}
+
+	private async processStreamingAnthropicMessages(payload: AnthropicMessageRequest, req: IncomingMessage, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
+		const messages: vscode.LanguageModelChatMessage[] = [];
+
+		if (payload.system) {
+			messages.push(vscode.LanguageModelChatMessage.User(this.redactPromptString(payload.system)));
+		}
+
+		for (const msg of payload.messages) {
+			const role = msg.role === 'user' ? vscode.LanguageModelChatMessageRole.User : vscode.LanguageModelChatMessageRole.Assistant;
+			const content = typeof msg.content === 'string' ? msg.content : msg.content.map(c => c.text).join(' ');
+			const redactedContent = this.redactPromptString(content);
+
+			if (role === vscode.LanguageModelChatMessageRole.User) {
+				messages.push(vscode.LanguageModelChatMessage.User(redactedContent));
+			} else {
+				messages.push(vscode.LanguageModelChatMessage.Assistant(redactedContent));
+			}
+		}
+
+		const resolvedModel = this.resolveModel(payload.model);
+		const promptStr = messages.map(m => {
+			if (typeof m.content === 'string') { return m.content; }
+			return m.content.map(p => {
+				if ('text' in p) { return p.text; }
+				return '';
+			}).join(' ');
+		}).join('\n');
+
+		// Set SSE headers
+		res.writeHead(200, {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache',
+			'Connection': 'keep-alive',
+			'Access-Control-Allow-Origin': '*'
+		});
+
+		const messageId = 'ant-' + randomUUID();
+		let totalContent = '';
+
+		const cts = new vscode.CancellationTokenSource();
+		req.on('close', () => {
+			cts.cancel();
+			console.log(`[Anthropic] Client disconnected, cancelling request ${logRequestId || ''}`);
+		});
+
+		// Heartbeat to keep connection alive
+		const heartbeat = setInterval(() => {
+			if (!res.writableEnded) {
+				res.write(': ping\n\n');
+			}
+		}, 15000);
+
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+
+			const lmModel = copilotModels[0];
+			const response = await lmModel.sendRequest(messages, {}, cts.token);
+
+			// Anthropic streaming starts with message_start
+			res.write(`event: message_start\ndata: ${JSON.stringify({
+				type: 'message_start',
+				message: {
+					id: messageId,
+					type: 'message',
+					role: 'assistant',
+					content: [],
+					model: resolvedModel,
+					stop_reason: null,
+					stop_sequence: null,
+					usage: { input_tokens: 0, output_tokens: 0 }
+				}
+			})}\n\n`);
+
+			res.write(`event: content_block_start\ndata: ${JSON.stringify({
+				type: 'content_block_start',
+				index: 0,
+				content_block: { type: 'text', text: '' }
+			})}\n\n`);
+
+			for await (const part of response.stream) {
+				if (cts.token.isCancellationRequested) { break; }
+				if (part instanceof vscode.LanguageModelTextPart) {
+					totalContent += part.value;
+					res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+						type: 'content_block_delta',
+						index: 0,
+						delta: { type: 'text_delta', text: part.value }
+					})}\n\n`);
+				}
+			}
+
+			if (!cts.token.isCancellationRequested) {
+				res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+					type: 'content_block_stop',
+					index: 0
+				})}\n\n`);
+
+				res.write(`event: message_delta\ndata: ${JSON.stringify({
+					type: 'message_delta',
+					delta: { stop_reason: 'end_turn', stop_sequence: null },
+					usage: { output_tokens: 0 }
+				})}\n\n`);
+
+				res.write(`event: message_stop\ndata: ${JSON.stringify({
+					type: 'message_stop'
+				})}\n\n`);
+
+				res.end();
+			}
+
+			// Token counting (best effort for logs)
+			let inputTokens = 0;
+			let outputTokens = 0;
+			try {
+				inputTokens = await lmModel.countTokens(promptStr, cts.token);
+				outputTokens = await lmModel.countTokens(totalContent, cts.token);
+			} catch (e) { }
+
+			if (logRequestId) {
+				this.logRequest(logRequestId, 'POST', '/v1/messages', 200, Date.now() - (logRequestStart || 0), {
+					requestPayload: payload,
+					responsePayload: { id: messageId, type: 'message', content: [{ type: 'text', text: totalContent }] },
+					tokensIn: inputTokens,
+					tokensOut: outputTokens,
+					model: resolvedModel
+				});
+			}
+
+		} catch (error: any) {
+			if (cts.token.isCancellationRequested) { return; }
+			console.error('Anthropic streaming error:', error);
+			const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'server_error');
+			res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: apiError.code || 'api_error', message: apiError.message } })}\n\n`);
+			res.end();
+		} finally {
+			clearInterval(heartbeat);
+			cts.dispose();
+		}
 	}
 
 	private async getAvailableModels(): Promise<Array<Record<string, unknown>>> {
@@ -806,31 +1608,13 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 		}));
 
-		// If no models found, return configured default
-		if (modelData.length === 0) {
-			modelData.push({
-				id: this.config.defaultModel,
-				object: 'model',
-				created: now,
-				owned_by: 'github-copilot',
-				name: this.config.defaultModel,
-				family: 'gpt-4o',
-				version: '1',
-				max_input_tokens: 128000,
-				capabilities: {
-					chat_completion: true,
-					text_completion: true,
-					streaming: true,
-					token_counting: true
-				}
-			});
-		}
-
 		return modelData;
 	}
 
-	private async processStreamingChatCompletion(payload: any, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
-		const messages = this.normalizeChatMessages(payload);
+	private async processStreamingChatCompletion(payload: any, req: IncomingMessage, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
+		let messages = this.normalizeChatMessages(payload);
+		// Apply redaction to OUTBOUND messages before sending to Copilot
+		messages = this.redactMessagesContent(messages);
 		const model = this.resolveModel(payload?.model);
 		const tools = this.normalizeTools(payload?.tools || payload?.functions);
 		const toolChoice = payload?.tool_choice || payload?.function_call;
@@ -975,12 +1759,31 @@ export class CopilotApiGateway implements vscode.Disposable {
 			res.write('data: [DONE]\n\n');
 			res.end();
 
+			// Calculate tokens manually since streaming responses often don't include usage
+			let tokensIn = 0;
+			let tokensOut = 0;
+			try {
+				const inputString = lmMessages.map(m => {
+					// @ts-ignore - Check for content property structure
+					return typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+				}).join('\n');
+				tokensIn = await lmModel.countTokens(inputString, new vscode.CancellationTokenSource().token);
+				tokensOut = await lmModel.countTokens(totalContent, new vscode.CancellationTokenSource().token);
+			} catch (e) {
+				// Ignore token counting errors
+				console.error('Failed to count tokens:', e);
+			}
+
 			// Log the streaming request
 			if (logRequestId && logRequestStart) {
 				this.logRequest(logRequestId, 'POST', '/v1/chat/completions', 200, Date.now() - logRequestStart, {
 					requestPayload: payload,
 					responsePayload: { streamed: true, content_preview: totalContent.slice(0, 500), tool_calls: toolCalls },
-					model: payload?.model
+					model: payload?.model,
+					requestHeaders: req.headers,
+					responseHeaders: res.getHeaders(),
+					tokensIn,
+					tokensOut
 				});
 			}
 		} catch (error) {
@@ -998,7 +1801,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 				this.logRequest(logRequestId, 'POST', '/v1/chat/completions', 500, Date.now() - logRequestStart, {
 					requestPayload: payload,
 					error: error instanceof Error ? error.message : String(error),
-					model: payload?.model
+					model: payload?.model,
+					requestHeaders: req.headers
 				});
 			}
 		}
@@ -1043,9 +1847,26 @@ export class CopilotApiGateway implements vscode.Disposable {
 			});
 		}
 
-		const prompt = this.composePrompt(messages);
+		let prompt = this.composePrompt(messages);
+		// Apply redaction to OUTBOUND prompt before sending to Copilot
+		prompt = this.redactPromptString(prompt);
+
 		const model = this.resolveModel(payload?.model);
 		const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt));
+
+		// Count tokens
+		let inputTokens = 0;
+		let outputTokens = 0;
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (copilotModels && copilotModels.length > 0) {
+				const lmModel = copilotModels[0];
+				inputTokens = await lmModel.countTokens(prompt);
+				outputTokens = await lmModel.countTokens(text || '');
+			}
+		} catch (e) {
+			console.error('Token counting failed:', e);
+		}
 
 		return {
 			id: `resp-${randomUUID()}`,
@@ -1066,9 +1887,135 @@ export class CopilotApiGateway implements vscode.Disposable {
 				}
 			],
 			usage: {
-				input_tokens: 0,
-				output_tokens: 0,
-				total_tokens: 0
+				prompt_tokens: inputTokens,
+				completion_tokens: outputTokens,
+				total_tokens: inputTokens + outputTokens
+			}
+		};
+	}
+
+	private async processAnthropicMessages(payload: AnthropicMessageRequest): Promise<AnthropicMessageResponse> {
+		const messages: vscode.LanguageModelChatMessage[] = [];
+
+		if (payload.system) {
+			messages.push(vscode.LanguageModelChatMessage.User(this.redactPromptString(payload.system)));
+		}
+
+		for (const msg of payload.messages) {
+			const role = msg.role === 'user' ? vscode.LanguageModelChatMessageRole.User : vscode.LanguageModelChatMessageRole.Assistant;
+			const content = typeof msg.content === 'string' ? msg.content : msg.content.map(c => c.text).join(' ');
+			const redactedContent = this.redactPromptString(content);
+
+			if (role === vscode.LanguageModelChatMessageRole.User) {
+				messages.push(vscode.LanguageModelChatMessage.User(redactedContent));
+			} else {
+				messages.push(vscode.LanguageModelChatMessage.Assistant(redactedContent));
+			}
+		}
+
+		const resolvedModel = this.resolveModel(payload.model);
+		const promptStr = messages.map(m => {
+			if (typeof m.content === 'string') { return m.content; }
+			return m.content.map(p => {
+				if ('text' in p) { return p.text; }
+				return '';
+			}).join(' ');
+		}).join('\n');
+
+		const text = await this.runWithConcurrency(() => this.invokeCopilot(promptStr));
+
+		// Count tokens
+		let inputTokens = 0;
+		let outputTokens = 0;
+		try {
+			const promptStr = messages.map(m => m.content).join(' ');
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (copilotModels && copilotModels.length > 0) {
+				const lmModel = copilotModels[0];
+				inputTokens = await lmModel.countTokens(promptStr);
+				outputTokens = await lmModel.countTokens(text || '');
+			}
+		} catch (e) {
+			console.error('Anthropic token counting failed:', e);
+		}
+
+		return {
+			id: 'ant-' + randomUUID(),
+			type: 'message',
+			role: 'assistant',
+			content: [{ type: 'text', text: text || '' }],
+			model: resolvedModel,
+			stop_reason: 'end_turn',
+			stop_sequence: null,
+			usage: {
+				input_tokens: inputTokens,
+				output_tokens: outputTokens
+			}
+		};
+	}
+
+
+	private async processGoogleGenerateContent(modelId: string, payload: GoogleGenerateContentRequest): Promise<GoogleGenerateContentResponse> {
+		const messages: vscode.LanguageModelChatMessage[] = [];
+
+		if (payload.systemInstruction) {
+			const systemText = payload.systemInstruction.parts.map(p => p.text).join(' ');
+			messages.push(vscode.LanguageModelChatMessage.User(this.redactPromptString(systemText)));
+		}
+
+		for (const content of payload.contents) {
+			const role = content.role === 'model' ? vscode.LanguageModelChatMessageRole.Assistant : vscode.LanguageModelChatMessageRole.User;
+			const text = content.parts.map(p => p.text).join(' ');
+			const redactedText = this.redactPromptString(text);
+
+			if (role === vscode.LanguageModelChatMessageRole.User) {
+				messages.push(vscode.LanguageModelChatMessage.User(redactedText));
+			} else {
+				messages.push(vscode.LanguageModelChatMessage.Assistant(redactedText));
+			}
+		}
+
+		const resolvedModel = this.resolveModel(modelId);
+		const promptStr = messages.map(m => {
+			if (typeof m.content === 'string') { return m.content; }
+			return m.content.map(p => {
+				if ('text' in p) { return p.text; }
+				return '';
+			}).join(' ');
+		}).join('\n');
+
+		const text = await this.runWithConcurrency(() => this.invokeCopilot(promptStr));
+
+		// Count tokens
+		let inputTokens = 0;
+		let outputTokens = 0;
+		try {
+			const promptStr = messages.map(m => m.content).join(' ');
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (copilotModels && copilotModels.length > 0) {
+				const lmModel = copilotModels[0];
+				inputTokens = await lmModel.countTokens(promptStr);
+				outputTokens = await lmModel.countTokens(text || '');
+			}
+		} catch (e) {
+			console.error('Google token counting failed:', e);
+		}
+
+		return {
+			candidates: [
+				{
+					content: {
+						role: 'model',
+						parts: [{ text: text || '' }]
+					},
+					finishReason: 'STOP',
+					index: 0
+				}
+			],
+			usageMetadata: {
+				promptTokenCount: inputTokens,
+				candidatesTokenCount: outputTokens,
+				totalTokenCount: inputTokens + outputTokens
 			}
 		};
 	}
@@ -1077,8 +2024,21 @@ export class CopilotApiGateway implements vscode.Disposable {
 		let messages = this.normalizeChatMessages(payload);
 		messages = this.injectSystemPrompt(messages);
 
+		// Apply redaction to OUTBOUND messages before sending to Copilot
+		messages = this.redactMessagesContent(messages);
+
 		const model = this.resolveModel(payload?.model);
-		const tools = this.normalizeTools(payload?.tools || payload?.functions);
+		const baseTools = this.normalizeTools(payload?.tools || payload?.functions) || [];
+
+		// Fetch MCP Tools
+		const mcpTools = await this.mcpService.getAllTools();
+		const mappedMcpTools: vscode.LanguageModelChatTool[] = mcpTools.map(t => ({
+			name: `mcp_${t.serverName}_${t.name}`,
+			description: t.description || `Tool from MCP server ${t.serverName}`,
+			inputSchema: t.inputSchema
+		}));
+
+		const allTools = [...baseTools, ...mappedMcpTools];
 		const toolChoice = payload?.tool_choice || payload?.function_call;
 		const responseFormat = payload?.response_format;
 
@@ -1089,21 +2049,98 @@ export class CopilotApiGateway implements vscode.Disposable {
 				const originalContent = messages[lastUserIdx].content;
 				messages[lastUserIdx] = {
 					...messages[lastUserIdx],
-					content: `${originalContent}\n\nIMPORTANT: You MUST respond with valid JSON only. No markdown, no explanation, just pure JSON.`
+					content: `${originalContent}\n\nIMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, just pure JSON.`
 				};
 			}
 		}
 
-		const result = await this.runWithConcurrency(() =>
-			this.invokeCopilotWithTools(messages, tools, toolChoice)
-		);
+		let iterations = 0;
+		const MAX_ITERATIONS = 5;
+		let result: any;
 
+		while (iterations < MAX_ITERATIONS) {
+			result = await this.runWithConcurrency(() =>
+				this.invokeCopilotWithTools(messages, allTools, toolChoice)
+			);
+
+			if (result.toolCalls && result.toolCalls.length > 0) {
+				const mcpToolCalls = result.toolCalls.filter((tc: any) => tc.name.startsWith('mcp_'));
+
+				if (mcpToolCalls.length > 0) {
+					// Add assistant message with tool calls to history
+					messages.push({
+						role: 'assistant',
+						content: result.content || null,
+						tool_calls: result.toolCalls.map((tc: any) => ({
+							id: `call_${randomUUID().slice(0, 24)}`,
+							type: 'function',
+							function: {
+								name: tc.name,
+								arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments)
+							}
+						}))
+					});
+
+					// Execute MCP tools
+					for (const tc of mcpToolCalls) {
+						const parts = tc.name.split('_');
+						const serverName = parts[1];
+						const toolName = parts.slice(2).join('_');
+
+						try {
+							const toolResult = await this.mcpService.callTool(serverName, toolName, tc.arguments);
+							messages.push({
+								role: 'tool',
+								tool_call_id: `call_${randomUUID().slice(0, 24)}`, // Best effort ID mapping
+								content: JSON.stringify(toolResult)
+							});
+						} catch (error: any) {
+							messages.push({
+								role: 'tool',
+								tool_call_id: `call_${randomUUID().slice(0, 24)}`,
+								content: `Error executing MCP tool: ${error.message}`
+							});
+						}
+					}
+
+					iterations++;
+					continue; // Loop again with tool results
+				}
+			}
+
+			// If we get here, either no tool calls or no MCP tool calls
+			break;
+		}
+
+		// Calculate tokens for final state
 		const created = Math.floor(Date.now() / 1000);
+		let promptTokens = 0;
+		let completionTokens = 0;
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (copilotModels && copilotModels.length > 0) {
+				const lmModel = copilotModels[0];
 
-		// Check if model requested tool calls
+				// Count input tokens for the whole history
+				const inputStr = messages.map(m => {
+					// @ts-ignore
+					return typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+				}).join('\n');
+				promptTokens = await lmModel.countTokens(inputStr);
+
+				// Count output tokens for the final response
+				const outputStr = result.content || '';
+				const toolStr = result.toolCalls ? JSON.stringify(result.toolCalls) : '';
+				completionTokens = await lmModel.countTokens(outputStr + toolStr);
+			}
+		} catch (e) {
+			console.error('Token counting failed:', e);
+		}
+
+		// Check if the FINAL iteration requested tool calls (that we didn't handle, i.e. client tools)
 		if (result.toolCalls && result.toolCalls.length > 0) {
 			return {
-				id: `chatcmpl-${randomUUID()}`,
+				id: `chatcmpl- ${randomUUID()}`,
 				object: 'chat.completion',
 				created,
 				model,
@@ -1128,9 +2165,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 					}
 				],
 				usage: {
-					prompt_tokens: 0,
-					completion_tokens: 0,
-					total_tokens: 0
+					prompt_tokens: promptTokens,
+					completion_tokens: completionTokens,
+					total_tokens: promptTokens + completionTokens
 				},
 				system_fingerprint: null
 			};
@@ -1138,7 +2175,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 		// Normal text response
 		return {
-			id: `chatcmpl-${randomUUID()}`,
+			id: `chatcmpl - ${randomUUID()}`,
 			object: 'chat.completion',
 			created,
 			model,
@@ -1153,9 +2190,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 				}
 			],
 			usage: {
-				prompt_tokens: 0,
-				completion_tokens: 0,
-				total_tokens: 0
+				prompt_tokens: promptTokens,
+				completion_tokens: completionTokens,
+				total_tokens: promptTokens + completionTokens
 			},
 			system_fingerprint: null
 		};
@@ -1183,6 +2220,18 @@ export class CopilotApiGateway implements vscode.Disposable {
 		tools?: vscode.LanguageModelChatTool[],
 		toolChoice?: any
 	): Promise<{ content: string; toolCalls?: Array<{ name: string; arguments: any }> }> {
+		const health = await this.getCopilotHealth();
+
+		if (!health.installed) {
+			throw new ApiError(503, 'GitHub Copilot extension is not installed.', 'service_unavailable', 'copilot_not_installed');
+		}
+		if (!health.chatInstalled) {
+			throw new ApiError(503, 'GitHub Copilot Chat extension is not installed.', 'service_unavailable', 'copilot_chat_not_installed');
+		}
+		if (!health.signedIn) {
+			throw new ApiError(401, 'Not signed in to GitHub Copilot. Please sign in in VS Code.', 'unauthorized', 'copilot_not_signed_in');
+		}
+
 		const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
 
 		if (!copilotModels || copilotModels.length === 0) {
@@ -1210,7 +2259,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 					if (msg.tool_calls && msg.tool_calls.length > 0) {
 						// Assistant message with tool calls - include tool call info
 						const toolCallInfo = msg.tool_calls.map((tc: any) =>
-							`[Called function: ${tc.function?.name || tc.name}(${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
+							`[Called function: $ { tc.function?.name || tc.name }(${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
 						).join('\n');
 						lmMessages.push(vscode.LanguageModelChatMessage.Assistant(toolCallInfo));
 					} else {
@@ -1219,7 +2268,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 					break;
 				case 'tool':
 					// Tool result message
-					const toolResultContent = `[Tool result for ${msg.tool_call_id || 'unknown'}]: ${content}`;
+					const toolResultContent = `[Tool result for ${msg.tool_call_id || 'unknown'}]: ${content} `;
 					lmMessages.push(vscode.LanguageModelChatMessage.User(toolResultContent));
 					break;
 				default:
@@ -1241,14 +2290,21 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 		}
 
+		// Create a cancellation token with timeout
+		const cts = new vscode.CancellationTokenSource();
+		const timeout = setTimeout(() => cts.cancel(), (this.config.requestTimeoutSeconds || 180) * 1000);
+
 		try {
-			const response = await model.sendRequest(lmMessages, options, new vscode.CancellationTokenSource().token);
+			const response = await model.sendRequest(lmMessages, options, cts.token);
 
 			let textContent = '';
 			const toolCalls: Array<{ name: string; arguments: any }> = [];
 
 			// Process the response stream
 			for await (const part of response.stream) {
+				if (cts.token.isCancellationRequested) {
+					throw new ApiError(504, 'Request timed out waiting for Copilot response.', 'gateway_timeout', 'request_timeout');
+				}
 				if (part instanceof vscode.LanguageModelTextPart) {
 					textContent += part.value;
 				} else if (part instanceof vscode.LanguageModelToolCallPart) {
@@ -1267,21 +2323,50 @@ export class CopilotApiGateway implements vscode.Disposable {
 			if (error instanceof ApiError) {
 				throw error;
 			}
-			throw new ApiError(502, `Failed to retrieve Copilot response: ${getErrorMessage(error)}`, 'bad_gateway', 'command_failed', { cause: error });
+			if (cts.token.isCancellationRequested) {
+				throw new ApiError(504, 'Request timed out waiting for Copilot response.', 'gateway_timeout', 'request_timeout');
+			}
+			throw new ApiError(502, `Failed to retrieve Copilot response: ${getErrorMessage(error)} `, 'bad_gateway', 'command_failed', { cause: error });
+		} finally {
+			clearTimeout(timeout);
+			cts.dispose();
 		}
 	}
 
 	private async processCompletion(payload: any): Promise<Record<string, unknown>> {
-		const prompt = this.normalizePromptInput(payload?.prompt);
+		let prompt = this.normalizePromptInput(payload?.prompt);
 		if (!prompt) {
 			throw new ApiError(400, 'prompt is required', 'invalid_request_error', 'missing_prompt');
 		}
 
+		// Apply redaction to OUTBOUND prompt before sending to Copilot
+		prompt = this.redactPromptString(prompt);
+
 		const model = this.resolveModel(payload?.model);
 		const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt));
+		// Calculate tokens
 		const created = Math.floor(Date.now() / 1000);
+		let promptTokens = 0;
+		let completionTokens = 0;
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (copilotModels && copilotModels.length > 0) {
+				const lmModel = copilotModels[0];
+
+				// Count input tokens
+				const inputStr = prompt;
+				promptTokens = await lmModel.countTokens(inputStr);
+
+				// Count output tokens
+				const outputStr = text || '';
+				completionTokens = await lmModel.countTokens(outputStr);
+			}
+		} catch (e) {
+			console.error('Token counting failed:', e);
+		}
+
 		return {
-			id: `cmpl-${randomUUID()}`,
+			id: `cmpl - ${randomUUID()} `,
 			object: 'text_completion',
 			created,
 			model,
@@ -1294,9 +2379,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 				}
 			],
 			usage: {
-				prompt_tokens: 0,
-				completion_tokens: 0,
-				total_tokens: 0
+				prompt_tokens: promptTokens,
+				completion_tokens: completionTokens,
+				total_tokens: promptTokens + completionTokens
 			}
 		};
 	}
@@ -1330,7 +2415,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		throw new ApiError(400, `Unsupported message type: ${type}`, 'invalid_request_error', 'unsupported_ws_message');
+		throw new ApiError(400, `Unsupported message type: ${type} `, 'invalid_request_error', 'unsupported_ws_message');
 	}
 
 	private handleWebSocketConnection(socket: WebSocket): void {
@@ -1383,12 +2468,19 @@ export class CopilotApiGateway implements vscode.Disposable {
 		const model = models[0];
 		const messages = [vscode.LanguageModelChatMessage.User(prompt)];
 
+		// Create a cancellation token with timeout
+		const cts = new vscode.CancellationTokenSource();
+		const timeout = setTimeout(() => cts.cancel(), (this.config.requestTimeoutSeconds || 180) * 1000);
+
 		try {
-			const response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
+			const response = await model.sendRequest(messages, {}, cts.token);
 
 			// Collect all text fragments from the response stream
 			let text = '';
 			for await (const fragment of response.text) {
+				if (cts.token.isCancellationRequested) {
+					throw new ApiError(504, 'Request timed out waiting for Copilot response.', 'gateway_timeout', 'request_timeout');
+				}
 				text += fragment;
 			}
 
@@ -1401,7 +2493,13 @@ export class CopilotApiGateway implements vscode.Disposable {
 			if (error instanceof ApiError) {
 				throw error;
 			}
-			throw new ApiError(502, `Failed to retrieve Copilot response: ${getErrorMessage(error)}`, 'bad_gateway', 'command_failed', { cause: error });
+			if (cts.token.isCancellationRequested) {
+				throw new ApiError(504, 'Request timed out waiting for Copilot response.', 'gateway_timeout', 'request_timeout');
+			}
+			throw new ApiError(502, `Failed to retrieve Copilot response: ${getErrorMessage(error)} `, 'bad_gateway', 'command_failed', { cause: error });
+		} finally {
+			clearTimeout(timeout);
+			cts.dispose();
 		}
 	}
 
@@ -1493,7 +2591,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		return messages.map(({ role, content }) => {
 			const cleanedRole = role || 'user';
 			const text = this.flattenMessageContent(content);
-			return `[${cleanedRole}]\n${text}`;
+			return `[${cleanedRole}]\n${text} `;
 		}).join('\n\n');
 	}
 
@@ -1546,9 +2644,22 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 	private async readJsonBody(req: IncomingMessage): Promise<any> {
 		const chunks: Buffer[] = [];
+		let totalSize = 0;
+
 		await new Promise<void>((resolve, reject) => {
 			req.on('data', chunk => {
-				chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+				const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+				totalSize += buffer.length;
+
+				// Check payload size limit
+				const maxPayloadSize = (this.config.maxPayloadSizeMb || 1) * 1024 * 1024;
+				if (totalSize > maxPayloadSize) {
+					req.destroy();
+					reject(new ApiError(413, `Request body too large.Maximum size is ${Math.round(maxPayloadSize / 1024)} KB.`, 'invalid_request_error', 'payload_too_large'));
+					return;
+				}
+
+				chunks.push(buffer);
 			});
 			req.on('end', () => resolve());
 			req.on('error', error => reject(error));
@@ -1576,14 +2687,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 	}
 
 	private sendSwaggerUi(res: ServerResponse): void {
-		const url = `http://${this.config.host}:${this.config.port}`;
+		// Use root-relative paths to avoid host/port mismatch issues
 		const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Copilot API - Swagger UI</title>
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+    <link rel="stylesheet" href="/swagger-ui/swagger-ui.css">
     <style>
         body { margin: 0; background: #fafafa; }
         .swagger-ui .topbar { display: none; }
@@ -1593,11 +2704,12 @@ export class CopilotApiGateway implements vscode.Disposable {
 </head>
 <body>
     <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="/swagger-ui/swagger-ui-bundle.js"></script>
+    <script src="/swagger-ui/swagger-ui-standalone-preset.js"></script>
     <script>
         window.onload = function() {
             SwaggerUIBundle({
-                url: '${url}/openapi.json',
+                url: '/openapi.json',
                 dom_id: '#swagger-ui',
                 presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
                 layout: 'BaseLayout',
@@ -1612,6 +2724,121 @@ export class CopilotApiGateway implements vscode.Disposable {
 		res.statusCode = 200;
 		res.setHeader('Content-Type', 'text/html');
 		res.end(html);
+	}
+
+	private serveStaticFile(req: IncomingMessage, res: ServerResponse, urlValue: string): void {
+		const fileName = path.basename(urlValue);
+		const candidates: string[] = [];
+
+		if (this.context) {
+			try {
+				// Use VS Code API to resolve path relative to extension root
+				candidates.push(this.context.asAbsolutePath(path.join('dist', 'swagger-ui', fileName)));
+			} catch (err) {
+				// ignore
+			}
+		}
+
+		// Fallbacks
+		candidates.push(
+			path.join(__dirname, 'swagger-ui', fileName),
+			path.join(__dirname, '..', 'swagger-ui', fileName),
+			path.join(__dirname, 'dist', 'swagger-ui', fileName)
+		);
+
+		let filePath = '';
+		for (const candidate of candidates) {
+			if (fs.existsSync(candidate)) {
+				filePath = candidate;
+				break;
+			}
+		}
+
+		if (filePath) {
+			const stat = fs.statSync(filePath);
+			const ext = path.extname(filePath);
+			let contentType = 'text/plain';
+			if (ext === '.css') {
+				contentType = 'text/css';
+			} else if (ext === '.js') {
+				contentType = 'application/javascript';
+			}
+
+			res.writeHead(200, {
+				'Content-Type': contentType,
+				'Content-Length': stat.size
+			});
+
+			const readStream = fs.createReadStream(filePath);
+			readStream.pipe(res);
+		} else {
+			const msg = `[Static] File not found: ${fileName}. Checked: ${JSON.stringify(candidates)}`;
+			console.error(msg);
+			this.output.appendLine(`[${new Date().toISOString()}] ERROR ${msg}`);
+
+			// Debug directory listing
+			if (this.context) {
+				try {
+					const dir = this.context.asAbsolutePath(path.join('dist', 'swagger-ui'));
+					if (fs.existsSync(dir)) {
+						this.output.appendLine(`Contents of ${dir}: ${fs.readdirSync(dir).join(', ')}`);
+					} else {
+						this.output.appendLine(`Directory not found: ${dir}`);
+					}
+				} catch (e) {
+					this.output.appendLine(`Error listing directory: ${e}`);
+				}
+			}
+
+			res.statusCode = 404;
+			res.end('Not found');
+		}
+	}
+
+	private sendDebugPaths(res: ServerResponse): void {
+		const debugInfo: any = {
+			dirname: __dirname,
+			cwd: process.cwd(),
+			contextExtensionUri: this.context?.extensionUri.fsPath ?? 'undefined',
+			candidates_css: [],
+			dist_swagger_contents: 'N/A'
+		};
+
+		const testFile = 'swagger-ui.css';
+		const candidates: any[] = [];
+
+		if (this.context) {
+			try {
+				const p = this.context.asAbsolutePath(path.join('dist', 'swagger-ui', testFile));
+				const dir = path.dirname(p);
+
+				let contents = 'N/A';
+				if (fs.existsSync(dir)) {
+					contents = fs.readdirSync(dir).join(', ');
+				}
+
+				candidates.push({
+					type: 'context.asAbsolutePath',
+					path: p,
+					exists: fs.existsSync(p),
+					dir_exists: fs.existsSync(dir),
+					dir_contents: contents
+				});
+				debugInfo.dist_swagger_contents = contents;
+			} catch (e) { candidates.push({ error: String(e) }); }
+		}
+
+		candidates.push({
+			type: 'fallback_dirname',
+			path: path.join(__dirname, 'swagger-ui', testFile),
+			exists: fs.existsSync(path.join(__dirname, 'swagger-ui', testFile))
+		});
+
+		debugInfo.candidates_css = candidates;
+
+		res.statusCode = 200;
+		res.setHeader('Content-Type', 'application/json');
+		res.end(JSON.stringify(debugInfo, null, 2));
 	}
 
 	private getOpenApiSpec(): object {
@@ -1633,6 +2860,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 			tags: [
 				{ name: 'Chat', description: 'Chat completion endpoints' },
 				{ name: 'Completions', description: 'Text completion endpoints' },
+				{ name: 'Anthropic', description: 'Anthropic Messages API compatible endpoints' },
+				{ name: 'Google', description: 'Google Generative AI API compatible endpoints' },
 				{ name: 'Models', description: 'Model information' },
 				{ name: 'Utilities', description: 'Utility endpoints' }
 			],
@@ -1835,6 +3064,80 @@ export class CopilotApiGateway implements vscode.Disposable {
 							'200': {
 								description: 'Usage statistics',
 								content: { 'application/json': { schema: { $ref: '#/components/schemas/UsageResponse' } } }
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1/messages': {
+					post: {
+						tags: ['Anthropic'],
+						summary: 'Anthropic Messages API',
+						description: 'Create a message using the Anthropic-compatible API format.',
+						operationId: 'anthropicMessages',
+						requestBody: {
+							required: true,
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/AnthropicMessageRequest' }
+								}
+							}
+						},
+						responses: {
+							'200': {
+								description: 'Successful response',
+								content: {
+									'application/json': { schema: { $ref: '#/components/schemas/AnthropicMessageResponse' } },
+									'text/event-stream': { description: 'Anthropic-style event stream' }
+								}
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1beta/models/{model}:generateContent': {
+					post: {
+						tags: ['Google'],
+						summary: 'Google Generative AI generateContent',
+						description: 'Generate content using the Google-compatible API format.',
+						operationId: 'googleGenerateContent',
+						parameters: [{ name: 'model', in: 'path', required: true, schema: { type: 'string' } }],
+						requestBody: {
+							required: true,
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/GoogleGenerateContentRequest' }
+								}
+							}
+						},
+						responses: {
+							'200': {
+								description: 'Successful response',
+								content: { 'application/json': { schema: { $ref: '#/components/schemas/GoogleGenerateContentResponse' } } }
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1beta/models/{model}:streamGenerateContent': {
+					post: {
+						tags: ['Google'],
+						summary: 'Google Generative AI streamGenerateContent',
+						description: 'Stream content generation using the Google-compatible API format.',
+						operationId: 'googleStreamGenerateContent',
+						parameters: [{ name: 'model', in: 'path', required: true, schema: { type: 'string' } }],
+						requestBody: {
+							required: true,
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/GoogleGenerateContentRequest' }
+								}
+							}
+						},
+						responses: {
+							'200': {
+								description: 'Successful response',
+								content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/GoogleGenerateContentResponse' } } } }
 							}
 						},
 						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
@@ -2098,6 +3401,125 @@ export class CopilotApiGateway implements vscode.Disposable {
 								}
 							}
 						}
+					},
+					AnthropicMessageRequest: {
+						type: 'object',
+						required: ['model', 'messages'],
+						properties: {
+							model: { type: 'string' },
+							messages: {
+								type: 'array',
+								items: {
+									type: 'object',
+									required: ['role', 'content'],
+									properties: {
+										role: { type: 'string', enum: ['user', 'assistant'] },
+										content: { type: 'string' }
+									}
+								}
+							},
+							system: { type: 'string' },
+							max_tokens: { type: 'integer' },
+							stream: { type: 'boolean' }
+						}
+					},
+					AnthropicMessageResponse: {
+						type: 'object',
+						properties: {
+							id: { type: 'string' },
+							type: { type: 'string', example: 'message' },
+							role: { type: 'string', example: 'assistant' },
+							content: {
+								type: 'array',
+								items: {
+									type: 'object',
+									properties: {
+										type: { type: 'string', example: 'text' },
+										text: { type: 'string' }
+									}
+								}
+							},
+							model: { type: 'string' },
+							stop_reason: { type: 'string' },
+							usage: {
+								type: 'object',
+								properties: {
+									input_tokens: { type: 'integer' },
+									output_tokens: { type: 'integer' }
+								}
+							}
+						}
+					},
+					GoogleGenerateContentRequest: {
+						type: 'object',
+						required: ['contents'],
+						properties: {
+							contents: {
+								type: 'array',
+								items: {
+									type: 'object',
+									required: ['parts'],
+									properties: {
+										role: { type: 'string', enum: ['user', 'model'] },
+										parts: {
+											type: 'array',
+											items: {
+												type: 'object',
+												properties: { text: { type: 'string' } }
+											}
+										}
+									}
+								}
+							},
+							systemInstruction: {
+								type: 'object',
+								properties: {
+									parts: {
+										type: 'array',
+										items: {
+											type: 'object',
+											properties: { text: { type: 'string' } }
+										}
+									}
+								}
+							},
+							generationConfig: { type: 'object' }
+						}
+					},
+					GoogleGenerateContentResponse: {
+						type: 'object',
+						properties: {
+							candidates: {
+								type: 'array',
+								items: {
+									type: 'object',
+									properties: {
+										content: {
+											type: 'object',
+											properties: {
+												role: { type: 'string' },
+												parts: {
+													type: 'array',
+													items: {
+														type: 'object',
+														properties: { text: { type: 'string' } }
+													}
+												}
+											}
+										},
+										finishReason: { type: 'string' }
+									}
+								}
+							},
+							usageMetadata: {
+								type: 'object',
+								properties: {
+									promptTokenCount: { type: 'integer' },
+									candidatesTokenCount: { type: 'integer' },
+									totalTokenCount: { type: 'integer' }
+								}
+							}
+						}
 					}
 				}
 			}
@@ -2152,6 +3574,101 @@ export class CopilotApiGateway implements vscode.Disposable {
 		return true;
 	}
 
+	/**
+	 * Extract client IP from request, handling proxies
+	 */
+	private getClientIp(req: IncomingMessage): string {
+		// Check X-Forwarded-For header for proxied requests
+		const forwarded = req.headers['x-forwarded-for'];
+		if (forwarded) {
+			const ips = typeof forwarded === 'string' ? forwarded : forwarded[0];
+			const firstIp = ips?.split(',')[0]?.trim();
+			if (firstIp) {
+				return firstIp;
+			}
+		}
+
+		const remoteAddress = req.socket.remoteAddress || 'unknown';
+		// Normalize IPv6 mapped IPv4 addresses
+		return remoteAddress.startsWith('::ffff:') ? remoteAddress.substring(7) : remoteAddress;
+	}
+
+	private checkIpAllowlist(req: IncomingMessage): boolean {
+		const allowlist = this.config.ipAllowlist;
+		if (!allowlist || allowlist.length === 0) {
+			return true; // No allowlist, allow all
+		}
+
+		const remoteAddress = req.socket.remoteAddress;
+		if (!remoteAddress) {
+			return false; // Cannot determine IP, block
+		}
+
+		// Normalize IPv6 mapped IPv4 addresses
+		const ip = remoteAddress.startsWith('::ffff:') ? remoteAddress.substring(7) : remoteAddress;
+
+		for (const allowed of allowlist) {
+			if (allowed.includes('/')) {
+				// CIDR notation
+				if (this.isIpInCidr(ip, allowed)) {
+					return true;
+				}
+			} else if (/^[\d\.]+$|^[\da-fA-F:]+$/.test(allowed)) {
+				// Direct IP match
+				if (allowed === ip) {
+					return true;
+				}
+			} else {
+				// Domain name - check cached resolved IPs
+				const cachedIps = this.domainCache.get(allowed);
+				if (cachedIps && cachedIps.includes(ip)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Resolve domains in allowlist and cache their IPs
+	 * Called periodically to keep cache fresh
+	 */
+	private async refreshDomainCache(): Promise<void> {
+		const dns = await import('dns').then(m => m.promises);
+		for (const entry of this.config.ipAllowlist) {
+			// Check if entry is a domain (contains letters)
+			if (/[a-zA-Z]/.test(entry) && !entry.includes('/')) {
+				try {
+					const addresses = await dns.resolve4(entry).catch(() => []);
+					const addresses6 = await dns.resolve6(entry).catch(() => []);
+					const allIps = [...addresses, ...addresses6];
+					if (allIps.length > 0) {
+						this.domainCache.set(entry, allIps);
+					}
+				} catch {
+					// DNS resolution failed, skip
+				}
+			}
+		}
+	}
+
+	private isIpInCidr(ip: string, cidr: string): boolean {
+		try {
+			const [range, bits] = cidr.split('/');
+			const mask = ~(2 ** (32 - parseInt(bits, 10)) - 1);
+
+			const ipParts = ip.split('.').map(Number);
+			const rangeParts = range.split('.').map(Number);
+
+			const ipNum = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+			const rangeNum = (rangeParts[0] << 24) | (rangeParts[1] << 16) | (rangeParts[2] << 8) | rangeParts[3];
+
+			return (ipNum & mask) === (rangeNum & mask);
+		} catch {
+			return false; // Invalid CIDR or IP
+		}
+	}
+
 	private logRequest(
 		requestId: string,
 		method: string,
@@ -2165,50 +3682,66 @@ export class CopilotApiGateway implements vscode.Disposable {
 			tokensOut?: number;
 			model?: string;
 			error?: string;
+			requestHeaders?: Record<string, unknown>;
+			responseHeaders?: Record<string, unknown>;
 		}
 	): void {
 		const isError = status >= 400;
 		const tokensIn = extra?.tokensIn ?? 0;
 		const tokensOut = extra?.tokensOut ?? 0;
 
-		// Always record stats
+		// Always record usage stats
 		this.recordRequestStats(durationMs, tokensIn, tokensOut, isError);
 
-		// Update endpoint stats
-		this.usageStats.requestsByEndpoint[path] = (this.usageStats.requestsByEndpoint[path] || 0) + 1;
+		// Determine if we should log detailed body/headers
+		// User requested: "i want it to logs request body and response body as well as headers"
+		// We use the existing 'logRequestBodies' config as the gatekeeper for all heavy data
 
-		// Add to history
-		const historyEntry: RequestHistoryEntry = {
-			id: requestId,
-			timestamp: Date.now(),
+		// Persistent Logging (Audit Trail)
+		// User requested to always log bodies/headers
+		const logEntry: AuditEntry = {
+			timestamp: new Date().toISOString(),
+			requestId,
 			method,
 			path,
 			status,
 			durationMs,
-			requestPayload: extra?.requestPayload,
-			responsePayload: extra?.responsePayload,
-			tokensIn,
-			tokensOut,
+			tokensIn: extra?.tokensIn,
+			tokensOut: extra?.tokensOut,
+			error: extra?.error,
 			model: extra?.model,
-			error: extra?.error
+			requestBody: extra?.requestPayload,
+			responseBody: extra?.responsePayload,
+			requestHeaders: extra?.requestHeaders,
+			responseHeaders: extra?.responseHeaders
 		};
-		this.addHistoryEntry(historyEntry);
+
+		const redactedEntry = this.redactSensitiveData(logEntry);
+		this.auditService.logRequest(redactedEntry);
+
+		// Broadcast to internal listeners (like Dashboard)
+		this._onDidLogRequest.fire(redactedEntry);
+
+		// Broadcast to WebSocket clients for Live Log Tail
+		if (this.wsServer) {
+			const broadcastData = JSON.stringify({
+				type: 'log',
+				data: redactedEntry
+			});
+			this.wsServer.clients.forEach(client => {
+				if (client.readyState === 1 /* OPEN */) {
+					client.send(broadcastData);
+				}
+			});
+		}
 
 		// Log to output if logging is enabled
 		if (this.config.enableLogging) {
-			const log = {
-				timestamp: new Date().toISOString(),
-				requestId,
-				method,
-				path,
-				status,
-				durationMs,
-				tokensIn,
-				tokensOut,
-				model: extra?.model,
-				error: extra?.error
-			};
-			this.output.appendLine(`[REQUEST] ${JSON.stringify(log)}`);
+			const statusIcon = isError ? '❌' : (status >= 300 ? '⚠️' : '✅');
+			this.output.appendLine(`[${new Date().toLocaleTimeString()}] ${statusIcon} ${method} ${path} ${status} (${durationMs}ms)`);
+			if (extra?.error) {
+				this.output.appendLine(`  Error: ${extra.error}`);
+			}
 		}
 	}
 
@@ -2286,6 +3819,21 @@ export class CopilotApiGateway implements vscode.Disposable {
 		if (patch.rateLimitPerMinute !== undefined) {
 			updates.push(Promise.resolve(config.update('server.rateLimitPerMinute', patch.rateLimitPerMinute, vscode.ConfigurationTarget.Global)));
 		}
+		if (patch.requestTimeoutSeconds !== undefined) {
+			updates.push(Promise.resolve(config.update('server.requestTimeoutSeconds', patch.requestTimeoutSeconds, vscode.ConfigurationTarget.Global)));
+		}
+		if (patch.maxPayloadSizeMb !== undefined) {
+			updates.push(Promise.resolve(config.update('server.maxPayloadSizeMb', patch.maxPayloadSizeMb, vscode.ConfigurationTarget.Global)));
+		}
+		if (patch.maxConnectionsPerIp !== undefined) {
+			updates.push(Promise.resolve(config.update('server.maxConnectionsPerIp', patch.maxConnectionsPerIp, vscode.ConfigurationTarget.Global)));
+		}
+		if (patch.redactionPatterns !== undefined) {
+			updates.push(Promise.resolve(config.update('server.redactionPatterns', patch.redactionPatterns, vscode.ConfigurationTarget.Global)));
+		}
+		if (patch.ipAllowlist !== undefined) {
+			updates.push(Promise.resolve(config.update('server.ipAllowlist', patch.ipAllowlist, vscode.ConfigurationTarget.Global)));
+		}
 
 		this.suppressRestart = true;
 		try {
@@ -2302,6 +3850,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		if (state === 'starting') {
 			this.statusItem.text = '$(broadcast) Copilot API: Starting…';
 			this.statusItem.tooltip = 'Starting Copilot API gateway';
+			this.statusItem.show();
 			return;
 		}
 
@@ -2309,11 +3858,13 @@ export class CopilotApiGateway implements vscode.Disposable {
 			this.statusItem.text = `$(broadcast) Copilot API: On (${protocolText})`;
 			const location = `${this.config.host}:${this.config.port}`;
 			this.statusItem.tooltip = detail ? detail : `Copilot API is running on ${location}`;
+			this.statusItem.show();
 			return;
 		}
 
 		this.statusItem.text = '$(broadcast) Copilot API: Off';
 		this.statusItem.tooltip = detail ?? 'Copilot API gateway is stopped';
+		this.statusItem.hide();
 	}
 
 	async showControlPalette(): Promise<void> {
@@ -2444,7 +3995,7 @@ export function normalizePrompt(raw: unknown): string | undefined {
 
 function getServerConfig(): ApiServerConfig {
 	const configuration = vscode.workspace.getConfiguration('githubCopilotApi');
-	const enabled = configuration.get<boolean>('server.enabled', true);
+	const enabled = configuration.get<boolean>('server.enabled', false);
 	const enableHttp = configuration.get<boolean>('server.enableHttp', true);
 	const enableWebSocket = configuration.get<boolean>('server.enableWebSocket', true);
 	const host = configuration.get<string>('server.host', '127.0.0.1').trim() || '127.0.0.1';
@@ -2458,8 +4009,58 @@ function getServerConfig(): ApiServerConfig {
 	const rawRateLimit = configuration.get<number>('server.rateLimitPerMinute', 60);
 	const rateLimitPerMinute = Number.isFinite(rawRateLimit) ? Math.max(0, Math.floor(rawRateLimit)) : 60;
 	const defaultSystemPrompt = configuration.get<string>('server.defaultSystemPrompt', '').trim();
-	const redactionPatterns = configuration.get<string[]>('server.redactionPatterns', []);
-	return { enabled, enableHttp, enableWebSocket, host, port, maxConcurrentRequests, defaultModel, apiKey, enableLogging, rateLimitPerMinute, defaultSystemPrompt, redactionPatterns };
+
+	// Read stored patterns and merge with defaults
+	const storedPatterns = configuration.get<unknown[]>('server.redactionPatterns', []);
+
+	// Migrate from old string[] format to new RedactionPattern[] format
+	const parsedPatterns: RedactionPattern[] = storedPatterns.map((p, i) => {
+		if (typeof p === 'string') {
+			// Old format - migrate to new
+			return {
+				id: `migrated-${i}`,
+				name: `Custom Pattern ${i + 1}`,
+				pattern: p,
+				enabled: true,
+				isBuiltin: false
+			};
+		}
+		// New format
+		return p as RedactionPattern;
+	});
+
+	// Merge with defaults: use stored state for builtin patterns, add missing defaults
+	const redactionPatterns: RedactionPattern[] = [];
+
+	// First, add all default patterns (use stored enabled state if available)
+	for (const defaultPattern of DEFAULT_REDACTION_PATTERNS) {
+		const storedVersion = parsedPatterns.find(p => p.id === defaultPattern.id);
+		if (storedVersion) {
+			redactionPatterns.push({ ...defaultPattern, enabled: storedVersion.enabled });
+		} else {
+			redactionPatterns.push(defaultPattern);
+		}
+	}
+
+	// Then add all custom (non-builtin) patterns
+	for (const pattern of parsedPatterns) {
+		if (!pattern.isBuiltin) {
+			redactionPatterns.push(pattern);
+		}
+	}
+
+	const ipAllowlist = configuration.get<string[]>('server.ipAllowlist', []);
+	const requestTimeoutSeconds = configuration.get<number>('server.requestTimeoutSeconds', 180);
+	const maxPayloadSizeMb = configuration.get<number>('server.maxPayloadSizeMb', 1);
+	const maxConnectionsPerIp = configuration.get<number>('server.maxConnectionsPerIp', 10);
+	const mcpEnabled = vscode.workspace.getConfiguration('githubCopilotApi.mcp').get<boolean>('enabled', true);
+
+	return {
+		enabled, enableHttp, enableWebSocket, host, port, maxConcurrentRequests,
+		defaultModel, apiKey, enableLogging, rateLimitPerMinute, defaultSystemPrompt,
+		redactionPatterns, ipAllowlist, requestTimeoutSeconds, maxPayloadSizeMb, maxConnectionsPerIp,
+		mcpEnabled
+	};
 }
 
 export function getErrorMessage(error: unknown): string {

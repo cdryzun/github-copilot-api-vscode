@@ -13,13 +13,21 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         private readonly _extensionUri: vscode.Uri,
         private readonly _gateway: CopilotApiGateway
     ) {
-        this._gateway.onDidChangeStatus(() => {
+        this._gateway.onDidChangeStatus(async () => {
             if (this._view) {
-                this._view.webview.html = this._getSidebarHtml(this._view.webview);
+                this._view.webview.html = await this._getSidebarHtml(this._view.webview);
             }
             // Also update the full panel if it's open
             if (CopilotPanel.currentPanel) {
-                CopilotPanel.currentPanel.webview.html = CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, this._gateway);
+                CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, this._gateway);
+            }
+        });
+        this._gateway.onDidLogRequest(log => {
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'liveLog', value: log });
+            }
+            if (CopilotPanel.currentPanel) {
+                CopilotPanel.currentPanel.webview.postMessage({ type: 'liveLog', value: log });
             }
         });
     }
@@ -27,14 +35,13 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     /**
      * Opens the dashboard as a full-size editor panel (not a sidebar view).
      */
-    public static createOrShow(extensionUri: vscode.Uri, gateway: CopilotApiGateway): void {
+    public static async createOrShow(extensionUri: vscode.Uri, gateway: CopilotApiGateway): Promise<void> {
         const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
         if (CopilotPanel.currentPanel) {
             CopilotPanel.currentPanel.reveal(column);
             // Update HTML in case state changed
-            CopilotPanel.currentPanel.webview.html = CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
-            console.log('Copilot API Dashboard: Revealed existing panel');
+            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
             return;
         }
 
@@ -51,12 +58,10 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 
         CopilotPanel.currentPanel = panel;
 
-        panel.webview.html = CopilotPanel.getPanelHtml(panel.webview, gateway);
-        console.log('Copilot API Dashboard: Created new panel, registering message listener');
+        panel.webview.html = await CopilotPanel.getPanelHtml(panel.webview, gateway);
 
         panel.webview.onDidReceiveMessage(
             data => {
-                console.log('Copilot API Dashboard: Received message from webview:', data);
                 CopilotPanel.handleMessage(data, gateway);
             },
             undefined,
@@ -64,7 +69,6 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         );
 
         panel.onDidDispose(() => {
-            console.log('Copilot API Dashboard: Panel disposed');
             CopilotPanel.currentPanel = undefined;
             for (const d of CopilotPanel.panelDisposables) {
                 d.dispose();
@@ -74,8 +78,6 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     }
 
     private static handleMessage(data: { type: string; value?: unknown }, gateway: CopilotApiGateway): void {
-        console.log('Dashboard received message:', data);
-        void vscode.window.showInformationMessage(`Dashboard: ${data.type}`);
         switch (data.type) {
             case 'openChat':
                 void vscode.commands.executeCommand('github-copilot-api-vscode.openCopilotChat');
@@ -87,11 +89,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 void vscode.commands.executeCommand('github-copilot-api-vscode.showServerControls');
                 break;
             case 'startServer':
-                console.log('Starting server via gateway');
                 void gateway.startServer();
                 break;
             case 'stopServer':
-                console.log('Stopping server via gateway');
                 void gateway.stopServer();
                 break;
             case 'toggleHttp':
@@ -136,27 +136,98 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 break;
             case 'clearHistory':
                 gateway.clearHistory();
-                void vscode.window.showInformationMessage('Request history cleared');
+                break;
+            case 'toggleMcp':
+                if (typeof data.value === 'boolean') {
+                    void gateway.toggleMcp(data.value);
+                }
                 break;
             case 'addRedactionPattern':
-                if (typeof data.value === 'string') {
-                    void gateway.addRedactionPattern(data.value).then(success => {
-                        if (success) {
-                            void vscode.window.showInformationMessage('Redaction pattern added');
-                        } else {
+                if (data.value && typeof data.value === 'object') {
+                    const { name, pattern } = data.value as { name: string; pattern: string };
+                    void gateway.addRedactionPattern(name, pattern).then(async success => {
+                        if (!success) {
                             void vscode.window.showErrorMessage('Invalid regex pattern');
+                        } else if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
                         }
                     });
                 }
                 break;
             case 'removeRedactionPattern':
+                if (typeof data.value === 'string') {
+                    void gateway.removeRedactionPattern(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'toggleRedactionPattern':
+                if (data.value && typeof data.value === 'object') {
+                    const { id, enabled } = data.value as { id: string; enabled: boolean };
+                    void gateway.toggleRedactionPattern(id, enabled);
+                    // Don't refresh entire page - toggle state is already updated in the UI
+                    // The state is persisted to config for next load
+                }
+                break;
+            case 'addIpAllowlistEntry':
+                if (typeof data.value === 'string') {
+                    void gateway.addIpAllowlistEntry(data.value).then(async success => {
+                        if (!success) {
+                            void vscode.window.showErrorMessage('Invalid IP address or CIDR range');
+                        } else if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'removeIpAllowlistEntry':
+                if (typeof data.value === 'string') {
+                    void gateway.removeIpAllowlistEntry(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'setRequestTimeout':
                 if (typeof data.value === 'number') {
-                    void gateway.removeRedactionPattern(data.value);
-                    void vscode.window.showInformationMessage('Redaction pattern removed');
+                    void gateway.setRequestTimeout(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'setMaxPayloadSize':
+                if (typeof data.value === 'number') {
+                    void gateway.setMaxPayloadSize(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'setMaxConnectionsPerIp':
+                if (typeof data.value === 'number') {
+                    void gateway.setMaxConnectionsPerIp(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
+            case 'setMaxConcurrency':
+                if (typeof data.value === 'number') {
+                    void gateway.setMaxConcurrency(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
                 }
                 break;
             case 'getHistory':
-                // Send history back to webview
                 if (CopilotPanel.currentPanel) {
                     const history = gateway.getHistory(50);
                     void CopilotPanel.currentPanel.webview.postMessage({
@@ -174,15 +245,64 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                     });
                 }
                 break;
+            case 'getAuditStats':
+                if (CopilotPanel.currentPanel) {
+                    // Send daily stats for charts
+                    void gateway.getDailyStats(30).then(stats => {
+                        void CopilotPanel.currentPanel?.webview.postMessage({
+                            type: 'auditStatsData',
+                            data: stats
+                        });
+                    });
+                }
+                break;
+            case 'getAuditLogs':
+                console.log('[CopilotPanel] Received getAuditLogs request');
+                if (CopilotPanel.currentPanel) {
+                    const val = data.value as any || {};
+                    const page = val.page || 1;
+                    const pageSize = val.pageSize || 10;
+                    gateway.getAuditLogs(page, pageSize).then(res => {
+                        console.log('[CopilotPanel] Got audit logs:', res.total, 'total,', res.entries.length, 'entries');
+                        void CopilotPanel.currentPanel?.webview.postMessage({
+                            type: 'auditLogData',
+                            data: res.entries,
+                            page: page,
+                            total: res.total,
+                            pageSize: pageSize
+                        });
+                    }).catch(err => {
+                        console.error('[CopilotPanel] Error getting audit logs:', err);
+                        // Send empty result on error
+                        void CopilotPanel.currentPanel?.webview.postMessage({
+                            type: 'auditLogData',
+                            data: [],
+                            page: page,
+                            total: 0,
+                            pageSize: pageSize
+                        });
+                    });
+                } else {
+                    console.warn('[CopilotPanel] No currentPanel available for getAuditLogs response');
+                }
+                break;
+            case 'openLogFolder':
+                const logPath = gateway.getLogFolderPath();
+                if (logPath) {
+                    void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(logPath));
+                } else {
+                    void vscode.window.showErrorMessage('Log folder not found');
+                }
+                break;
         }
     }
 
     /**
      * Simple sidebar HTML that prompts user to open full dashboard
      */
-    private _getSidebarHtml(webview: vscode.Webview): string {
+    private async _getSidebarHtml(webview: vscode.Webview): Promise<string> {
         const nonce = getNonce();
-        const status = this._gateway.status;
+        const status = await this._gateway.getStatus();
         const isRunning = status.running;
         const statusColor = isRunning ? '#4ade80' : '#f87171';
         const statusText = isRunning ? 'Running' : 'Stopped';
@@ -211,6 +331,10 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         <div class="dot"></div>
         <strong>${statusText}</strong>
     </div>
+    <div style="font-size: 11px; opacity: 0.8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+        <div style="width: 7px; height: 7px; border-radius: 50%; background: ${status.copilot.ready ? '#4ade80' : '#fbbf24'};"></div>
+        <span>Copilot: ${status.copilot.ready ? 'Ready' : (status.copilot.signedIn ? 'Extension Check' : 'Sign-in Needed')}</span>
+    </div>
     <div class="url">${url}</div>
     <button id="btn-dashboard">Open Dashboard</button>
     <button id="btn-toggle" class="secondary">${isRunning ? 'Stop Server' : 'Start Server'}</button>
@@ -228,9 +352,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 </html>`;
     }
 
-    private static getPanelHtml(webview: vscode.Webview, gateway: CopilotApiGateway): string {
+    private static async getPanelHtml(webview: vscode.Webview, gateway: CopilotApiGateway): Promise<string> {
         const nonce = getNonce();
-        const status = gateway.status;
+        const status = await gateway.getStatus();
         const config = status.config;
         const isRunning = status.running;
         const statusColor = isRunning ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
@@ -242,9 +366,11 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src http: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; connect-src http: https:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Copilot API Dashboard</title>
+    <title>Copilot API Dashboard</title>
+    <!-- Removed Chart.js for reliability -->
     <style>
         :root { color-scheme: var(--vscode-color-scheme); }
         body {
@@ -254,13 +380,14 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                         var(--vscode-editor-background);
             font-family: var(--vscode-font-family); color: var(--vscode-foreground);
         }
-        .page { max-width: 1100px; margin: 0 auto; padding: 24px 24px 48px; display: flex; flex-direction: column; gap: 16px; }
-        .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-        .hero h1 { margin: 0; font-size: 22px; letter-spacing: -0.2px; }
-        .hero p { margin: 4px 0 0 0; opacity: 0.8; }
-        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-        .card { background-color: color-mix(in srgb, var(--vscode-sideBar-background) 80%, transparent); border: 1px solid var(--vscode-widget-border); border-radius: 8px; padding: 14px 16px; box-shadow: 0 4px 18px rgba(0,0,0,0.08); }
+        .page { max-width: 1400px; margin: 0 auto; padding: 32px 32px 64px; display: flex; flex-direction: column; gap: 24px; }
+        .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: 8px; }
+        .hero h1 { margin: 0; font-size: 26px; letter-spacing: -0.4px; font-weight: 700; }
+        .hero p { margin: 6px 0 0 0; opacity: 0.7; font-size: 14px; max-width: 600px; line-height: 1.5; }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .card { background-color: color-mix(in srgb, var(--vscode-sideBar-background) 80%, transparent); border: 1px solid var(--vscode-widget-border); border-radius: 12px; padding: 24px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.12); border-color: var(--vscode-focusBorder); }
         .card.full-width { grid-column: 1 / -1; }
         h3 { margin-top: 0; margin-bottom: 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.8; }
         .status-row { display: flex; align-items: center; gap: 10px; font-weight: 600; }
@@ -285,9 +412,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         input:checked + .slider { background: var(--vscode-testing-iconPassed); border-color: var(--vscode-testing-iconPassed); }
         input:checked + .slider:before { transform: translateX(16px); background: var(--vscode-editor-background); }
         .muted { opacity: 0.75; font-size: 12px; }
-        .stacked { display: flex; flex-direction: column; gap: 6px; }
-        .inline-form { display: grid; grid-template-columns: 1fr 120px; gap: 8px; align-items: center; }
-        input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-family: var(--vscode-font-family); box-sizing: border-box; }
+        .inline-form { display: grid; grid-template-columns: 140px 1fr; gap: 16px; align-items: center; }
+        .stacked { display: flex; flex-direction: column; gap: 12px; }
+        input, select, textarea { width: 100%; padding: 8px 10px; font-size: 13px; border-radius: 6px; border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-family: var(--vscode-font-family); box-sizing: border-box; }
         textarea { font-family: var(--vscode-editor-font-family); font-size: 12px; resize: vertical; min-height: 120px; }
         select { cursor: pointer; }
         .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -301,225 +428,474 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         .doc-card p { margin: 6px 0 0 0; opacity: 0.85; font-size: 12px; }
         pre { background: var(--vscode-textBlockQuote-background); border-radius: 8px; padding: 10px; font-size: 12px; overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-word; }
         a { color: var(--vscode-textLink-foreground); }
-
+        
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-radius: 50%; border-top-color: transparent; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Live Log Tail Styles */
+        .log-container {
+            background: #0d1117;
+            color: #e6edf3;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 11px;
+            padding: 12px;
+            border-radius: 8px;
+            height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            border: 1px solid var(--vscode-widget-border);
+            margin-top: 8px;
+        }
+        .log-line {
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+            display: flex;
+            gap: 8px;
+        }
+        .log-time { color: #8b949e; min-width: 75px; flex-shrink: 0; }
+        .log-method { font-weight: 600; color: #58a6ff; min-width: 50px; flex-shrink: 0; }
+        .log-path { color: #d2a8ff; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .log-status { font-weight: 600; min-width: 35px; flex-shrink: 0; }
+        .log-status.success { color: #3fb950; }
+        .log-status.error { color: #f85149; }
+        .log-latency { color: #d0d7de; min-width: 60px; text-align: right; flex-shrink: 0; }
+        
+        #log-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+        #log-status-indicator.active { background-color: #3fb950; box-shadow: 0 0 8px #3fb950; }
+        #log-status-indicator.inactive { background-color: #8b949e; }
+
     </style>
 </head>
 <body>
     <div class="page">
         <div class="hero">
             <div>
-                <div class="badge">Copilot API Gateway</div>
-                <h1>Local OpenAI-compatible server</h1>
-                <p>Start/stop the gateway, pick interfaces, and copy API docs from a single place.</p>
+                <h1>Copilot API Dashboard</h1>
+                <p>Monitor and control your local Copilot API Gateway.</p>
+                <div style="margin-top: 8px; font-size: 13px; opacity: 0.9; font-family: var(--vscode-editor-font-family);">
+                    <span style="opacity: 0.6;">Running on:</span> 
+                    <strong>http://${config.host}:${config.port}</strong>
+                </div>
             </div>
-            <div class="status-row">
-                <div class="status-dot"></div>
-                <div>${statusText}</div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-toggle-server" class="${status.running ? 'danger' : 'success'}" data-running="${status.running}" style="min-width: 140px;">
+                    ${status.running ? 'Stop Server' : 'Start Server'}
+                </button>
+                <button class="secondary" id="btn-open-chat" title="Open Copilot Chat" style="min-width: 90px;">💬 Chat</button>
+                <button class="secondary" id="btn-ask-copilot" title="Ask Copilot" style="min-width: 90px;">❓ Ask</button>
+                <button class="secondary" id="btn-settings" title="Settings">⚙️</button>
+            </div>
+        </div>
+
+        <!-- Copilot Health Banner -->
+        ${!status.copilot.ready ? `
+        <div style="background: var(--vscode-statusBarItem-warningBackground); color: var(--vscode-statusBarItem-warningForeground); padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; font-weight: 500; border: 1px solid rgba(0,0,0,0.1);">
+            <span style="font-size: 20px;">⚠️</span>
+            <div style="flex: 1;">
+                <div style="font-size: 14px;">GitHub Copilot is not fully ready</div>
+                <div style="font-size: 12px; opacity: 0.9; font-weight: 400;">
+                    ${!status.copilot.installed ? '• GitHub Copilot extension is missing. ' : ''}
+                    ${!status.copilot.chatInstalled ? '• GitHub Copilot Chat extension is missing. ' : ''}
+                    ${!status.copilot.signedIn ? '• You are not signed in to GitHub Copilot. ' : ''}
+                </div>
+            </div>
+            <button class="secondary" onclick="vscode.postMessage({ type: 'askCopilot' })" style="width: auto; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: inherit;">Resolve</button>
+        </div>
+        ` : ''}
+
+        <!-- Server Status Card -->
+        <div class="card full-width">
+            <div class="status-row" style="justify-content: space-between; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div id="status-dot" class="status-dot"></div>
+                    <span id="server-status-text" style="font-size: 16px;">${statusText}</span>
+                </div>
+                <div class="muted">
+                    v${gateway.getVersion()}
+                </div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Requests</div>
+                    <div class="value" style="font-size: 20px;" id="stat-requests">${status.stats?.totalRequests ?? 0}</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Req/Min</div>
+                    <div class="value" style="font-size: 20px;" id="stat-rpm">0</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Latency</div>
+                    <div class="value" style="font-size: 20px;" id="stat-latency">0ms</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Error Rate</div>
+                    <div class="value" style="font-size: 20px;" id="stat-errors">0%</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Tokens In</div>
+                    <div class="value" style="font-size: 20px;" id="stat-tokens-in">${status.stats?.totalTokensIn ?? 0}</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Tokens Out</div>
+                    <div class="value" style="font-size: 20px;" id="stat-tokens-out">${status.stats?.totalTokensOut ?? 0}</div>
+                </div>
+                <div class="card" style="padding: 16px;">
+                    <div class="label">Uptime</div>
+                    <div class="value" style="font-size: 20px;" id="stat-uptime">0m</div>
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div class="label">Connection</div>
+                <div class="value">
+                    ${config.enableHttp ? 'HTTP ' : ''}
+                    ${config.enableWebSocket ? 'WebSocket ' : ''}
+                </div>
+                <div class="label">Auth Mode</div>
+                <div class="value">${config.apiKey ? 'API Key (Protected)' : 'Open (No Auth)'}</div>
+                <div class="label">Default Model</div>
+                <div class="value">${config.defaultModel}</div>
+                <div class="label">Copilot Health</div>
+                <div class="value" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span class="badge" style="background: ${status.copilot.chatInstalled ? 'var(--vscode-charts-green)' : (status.copilot.signedIn ? 'var(--vscode-charts-yellow)' : 'var(--vscode-charts-red)')}; color: ${status.copilot.chatInstalled ? 'var(--vscode-editor-background)' : (status.copilot.signedIn ? 'var(--vscode-editor-background)' : 'white')}; padding: 1px 6px; border-radius: 4px; font-size: 10px;">Chat: ${status.copilot.chatInstalled ? 'Installed' : (status.copilot.signedIn ? 'Not Detected' : 'Missing')}</span>
+                    <span class="badge" style="background: ${status.copilot.signedIn ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-red)'}; color: ${status.copilot.signedIn ? 'var(--vscode-editor-background)' : 'white'}; padding: 1px 6px; border-radius: 4px; font-size: 10px;">Auth: ${status.copilot.signedIn ? 'Signed In' : 'Signed Out'}</span>
+                </div>
             </div>
         </div>
 
         <div class="grid">
+            <!-- Configuration Card -->
             <div class="card">
-                <h3>Server</h3>
-                <div class="info-grid">
-                    <div class="label">URL</div>
-                    <div class="value">${url}</div>
-                    <div class="label">Model</div>
-                    <div class="value">${config.defaultModel}</div>
-                    <div class="label">Requests</div>
-                    <div class="value">${status.activeRequests} active</div>
-                </div>
-                ${networkInfo ? `
-                <div style="margin-top: 12px; padding: 10px; background: var(--vscode-textBlockQuote-background); border-radius: 6px; border-left: 3px solid var(--vscode-textLink-foreground); overflow: hidden;">
-                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; opacity: 0.8; margin-bottom: 8px;">📡 Shareable URLs (LAN)</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px; overflow: hidden;">
-                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                            <span class="label" style="flex-shrink: 0; width: 65px;">Hostname</span>
-                            <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;">http://${networkInfo.hostname}.local:${config.port}</code>
-                            <button class="secondary btn-copy-url" data-url="http://${networkInfo.hostname}.local:${config.port}" style="padding: 4px 8px; font-size: 11px; flex-shrink: 0;">Copy</button>
-                        </div>
-                        ${networkInfo.localIPs.map(ip => `
-                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                            <span class="label" style="flex-shrink: 0; width: 65px;">IP</span>
-                            <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1;">http://${ip}:${config.port}</code>
-                            <button class="secondary btn-copy-url" data-url="http://${ip}:${config.port}" style="padding: 4px 8px; font-size: 11px; flex-shrink: 0;">Copy</button>
-                        </div>
-                        `).join('')}
+                <h3>⚙️ Server Configuration</h3>
+                <div class="stacked">
+                    <div class="toggle-row">
+                        <span>Enable HTTP Server</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-http" ${config.enableHttp ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
                     </div>
-                    <div class="muted" style="font-size: 10px; margin-top: 6px;">Share these URLs with other devices on your local network</div>
-                </div>
-                ` : ''}
-                <div class="actions" style="margin-top:10px;">
-                    <button id="btn-toggle-server" data-running="${isRunning}">${isRunning ? 'Stop Server' : 'Start Server'}</button>
-                    <button class="secondary" id="btn-open-chat">Open Chat</button>
-                    <button class="secondary" id="btn-ask-copilot">Ask Copilot</button>
-                    <button class="secondary" id="btn-settings">Settings</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>Protocols</h3>
-                <div class="toggle-row">
-                    <div><strong>HTTP</strong><div class="muted">REST endpoints</div></div>
-                    <label class="switch"><input type="checkbox" id="toggle-http" ${config.enableHttp ? 'checked' : ''}><span class="slider"></span></label>
-                </div>
-                <div class="toggle-row">
-                    <div><strong>WebSocket</strong><div class="muted">Realtime /v1/realtime</div></div>
-                    <label class="switch"><input type="checkbox" id="toggle-ws" ${config.enableWebSocket ? 'checked' : ''}><span class="slider"></span></label>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>Network</h3>
-                <div class="pill-row" style="margin-bottom:8px;">
-                    <div class="pill" id="btn-host-local">Bind: 127.0.0.1</div>
-                    <div class="pill" id="btn-host-lan">Bind: 0.0.0.0 (LAN)</div>
-                </div>
-                <div class="inline-form" style="margin-bottom:8px;">
-                    <input id="custom-host" type="text" placeholder="Custom host" value="${config.host}" />
-                    <button class="secondary" id="btn-set-host">Set Host</button>
-                </div>
-                <div class="inline-form">
-                    <input id="custom-port" type="number" min="1" max="65535" value="${config.port}" />
-                    <button class="secondary" id="btn-set-port">Set Port</button>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>Model</h3>
-                <div class="inline-form">
-                    <input id="model-input" type="text" value="${config.defaultModel}" />
-                    <button class="secondary" id="btn-set-model">Save</button>
-                </div>
-                <div class="muted" style="margin-top:6px;">Shown by /v1/models and used as default for completions.</div>
-                <details style="margin-top:10px;">
-                    <summary style="cursor:pointer;font-size:12px;opacity:0.8;">Model Aliases (OpenAI → Copilot)</summary>
-                    <div style="font-size:11px;margin-top:8px;padding:8px;background:var(--vscode-textBlockQuote-background);border-radius:6px;font-family:var(--vscode-editor-font-family);">
-                        gpt-4 → gpt-4o-copilot<br>
-                        gpt-4-turbo → gpt-4o-copilot<br>
-                        gpt-4o → gpt-4o-copilot<br>
-                        gpt-4o-mini → gpt-4o-mini-copilot<br>
-                        gpt-3.5-turbo → gpt-4o-mini-copilot<br>
-                        claude-3.5-sonnet → claude-3.5-sonnet-copilot<br>
-                        o1 → o1-copilot<br>
-                        o1-mini → o1-mini-copilot<br>
-                        o3-mini → o3-mini-copilot
+                    <div class="toggle-row">
+                        <span>Enable WebSocket</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-ws" ${config.enableWebSocket ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
                     </div>
-                </details>
+                    <div class="toggle-row">
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <span>Detailed Logging</span>
+                            <span title="Enables verbose output to the VS Code Output channel. Useful for debugging." style="cursor: help; opacity: 0.6; font-size: 14px;">ℹ️</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-logging" ${config.enableLogging ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div style="margin-top: 16px;">
+                        <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                            <div style="flex: 1;">
+                                <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">HOST</span>
+                                <input type="text" id="custom-host" value="${config.host}" placeholder="127.0.0.1" style="width: 100% !important;">
+                            </div>
+                            <div style="width: 100px;">
+                                <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">PORT</span>
+                                <input type="number" id="custom-port" value="${config.port}" style="width: 100% !important;">
+                            </div>
+                            <div style="display: flex; align-items: flex-end;">
+                                <button class="secondary" id="btn-set-host" style="height: 36px; padding: 0 16px;">Apply</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <button class="secondary" id="btn-host-local" style="flex: 1;">Bind Localhost</button>
+                            <button class="secondary" id="btn-host-lan" style="flex: 1;">Bind LAN (0.0.0.0)</button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
+            <!-- Security Card -->
             <div class="card">
-                <h3>Security & Rate Limits</h3>
-                <div class="toggle-row">
-                    <div><strong>Authentication</strong><div class="muted">Require Bearer token</div></div>
-                    <label class="switch"><input type="checkbox" id="toggle-auth" ${config.apiKey ? 'checked' : ''}><span class="slider"></span></label>
+                <h3>🔒 Security</h3>
+                <div class="stacked">
+                    <div class="toggle-row">
+                        <span>Enable Authentication</span>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-auth" ${config.apiKey ? 'checked' : ''}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    
+                    <div style="margin-top: 12px;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <input type="password" id="api-key-input" value="${config.apiKey || ''}" placeholder="sk-..." style="flex: 1;">
+                            <button class="secondary" id="btn-show-key" style="width: 40px;" title="Show/Hide Key">👁</button>
+                            <button class="secondary" id="btn-copy-key" style="width: 40px;" title="Copy Key">📋</button>
+                        </div>
+                        <div class="actions">
+                            <button class="secondary" id="btn-generate-key">Generate New Key</button>
+                            <button class="secondary" id="btn-set-apikey">Set Manual Key</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
+                        <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 8px;">RATE LIMIT</span>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="number" id="rate-limit-input" value="${config.rateLimitPerMinute || 0}" placeholder="0 = unlimited" style="width: 100px !important;">
+                            <span class="muted">req/min</span>
+                            <button class="secondary" id="btn-set-ratelimit" style="width: auto; padding: 6px 16px;">Set</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
+                        <div class="inline-form" style="margin-bottom: 8px;">
+                            <span style="font-size: 12px; font-weight: 600;">ALLOW IP / DOMAIN</span>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="ip-allowlist-input" placeholder="e.g. 192.168.1.5, 10.0.0.0/24, or example.com">
+                                <button class="secondary" id="btn-add-ip" style="width: auto;">Add</button>
+                            </div>
+                        </div>
+                        <div class="pill-row" id="ip-list">
+                            ${(config.ipAllowlist || []).map(ip =>
+            `<span class="pill" style="font-size: 11px; display: flex; align-items: center; gap: 4px;">${ip} <span class="btn-remove-ip" data-value="${ip}" style="cursor: pointer; opacity: 0.6;">×</span></span>`
+        ).join('')}
+                            ${(!config.ipAllowlist || config.ipAllowlist.length === 0) ? '<span class="muted">No access restrictions (all IPs allowed)</span>' : ''}
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
+                        <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 8px;">HARDENING & LIMITS</span>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <span class="muted" style="width: 120px; font-size: 11px;">Request Timeout</span>
+                                <input type="number" id="timeout-input" value="${config.requestTimeoutSeconds || 60}" style="width: 80px !important;">
+                                <span class="muted">sec</span>
+                                <button class="secondary" id="btn-set-timeout" style="width: auto; padding: 4px 12px; font-size: 11px;">Set</button>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <span class="muted" style="width: 120px; font-size: 11px;">Max Payload</span>
+                                <input type="number" id="payload-input" value="${config.maxPayloadSizeMb || 1}" style="width: 80px !important;">
+                                <span class="muted">MB</span>
+                                <button class="secondary" id="btn-set-payload" style="width: auto; padding: 4px 12px; font-size: 11px;">Set</button>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <span class="muted" style="width: 120px; font-size: 11px;">Max Connections/IP</span>
+                                <input type="number" id="connections-input" value="${config.maxConnectionsPerIp || 10}" style="width: 80px !important;">
+                                <span class="muted">conn</span>
+                                <button class="secondary" id="btn-set-connections" style="width: auto; padding: 4px 12px; font-size: 11px;">Set</button>
+                            </div>
+
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <span class="muted" style="width: 120px; font-size: 11px;">Total Concurrency</span>
+                                <input type="number" id="concurrency-input" value="${config.maxConcurrentRequests || 4}" style="width: 80px !important;">
+                                <span class="muted">req</span>
+                                <button class="secondary" id="btn-set-concurrency" style="width: auto; padding: 4px 12px; font-size: 11px;">Set</button>
+                            </div>
+                            <div class="muted" style="font-size: 10px; margin-top: 2px; opacity: 0.9; line-height: 1.4;">
+                                <div style="display: flex; gap: 4px; margin-bottom: 2px;">
+                                    <span style="font-weight: 600; color: var(--vscode-charts-blue); min-width: 105px;">Connections/IP:</span>
+                                    <span>Limits simultaneous requests from a <b>single</b> user/client.</span>
+                                </div>
+                                <div style="display: flex; gap: 4px;">
+                                    <span style="font-weight: 600; color: var(--vscode-charts-orange); min-width: 105px;">Total Concurrency:</span>
+                                    <span>Global limit across <b>all</b> users to protect the Copilot backend.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="inline-form" style="margin-top:8px;">
-                    <input id="api-key-input" type="password" placeholder="${config.apiKey ? '••••••••' : 'Enter API key to enable auth'}" value="" />
-                    <button class="secondary" id="btn-set-apikey">Set</button>
-                    <button class="secondary" id="btn-generate-key" title="Generate random key">🎲</button>
-                    <button class="secondary" id="btn-copy-key" title="Copy current API key">📋</button>
-                    <button class="secondary" id="btn-show-key" title="Show/hide key">👁</button>
+            </div>
+        </div>
+
+        <!-- MCP Status -->
+        <div class="card full-width" id="mcp-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">🔌 MCP Status <span id="mcp-status-badge" class="badge">Checking...</span></h3>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <label style="font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; opacity: 0.8;">
+                        <input type="checkbox" id="mcp-enabled-toggle" style="width: 14px; height: 14px; margin: 0;"> Enabled
+                    </label>
                 </div>
-                <div class="toggle-row" style="margin-top:8px;">
-                    <div><strong>Request Logging</strong><div class="muted">Log requests to output</div></div>
-                    <label class="switch"><input type="checkbox" id="toggle-logging" ${config.enableLogging ? 'checked' : ''}><span class="slider"></span></label>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div style="padding: 12px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                    <div class="muted" style="font-size: 11px; margin-bottom: 4px;">Connected Servers</div>
+                    <div id="mcp-servers-count" style="font-size: 18px; font-weight: 600;">0</div>
+                    <div id="mcp-servers-list" class="muted" style="font-size: 10px; margin-top: 4px;">None</div>
                 </div>
-                <div class="inline-form" style="margin-top:8px;">
-                    <input id="rate-limit-input" type="number" min="0" placeholder="Requests/min" value="${config.rateLimitPerMinute}" />
-                    <button class="secondary" id="btn-set-ratelimit">Set Limit</button>
+                <div style="padding: 12px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
+                    <div class="muted" style="font-size: 11px; margin-bottom: 4px;">Available Tools</div>
+                    <div id="mcp-tools-count" style="font-size: 18px; font-weight: 600;">0</div>
+                    <div id="mcp-tools-list" class="muted" style="font-size: 10px; margin-top: 4px; max-height: 60px; overflow-y: auto;">None</div>
                 </div>
-                <div class="muted" style="margin-top:6px;">Rate limit: ${config.rateLimitPerMinute > 0 ? config.rateLimitPerMinute + ' req/min' : 'Disabled (0)'}</div>
+            </div>
+        </div>
+
+        <!-- Live Log Tail -->
+        <div class="card full-width">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">📟 Live Log Tail <div id="log-status-indicator" class="active"></div></h3>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <label style="font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; opacity: 0.8;">
+                        <input type="checkbox" id="log-autoscroll" checked style="width: 14px; height: 14px; margin: 0;"> Auto-scroll
+                    </label>
+                    <button class="secondary" id="btn-clear-logs" style="width: auto; padding: 4px 12px; font-size: 11px; font-weight: 500;">🧹 Clear</button>
+                </div>
+            </div>
+            <div id="live-log-container" class="log-container">
+                <div class="muted" style="text-align: center; padding-top: 120px; opacity: 0.5;">Waiting for API requests...</div>
+            </div>
+        </div>
+
+        <!-- Audit & Analytics -->
+        <div class="card full-width">
+            
+            <!-- Charts removed per user request -->
+            <div style="margin-bottom: 24px;"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="margin: 0; font-size: 13px; opacity: 0.9;">Recent Activity</h4>
+                <span id="refresh-timer" class="muted" style="font-weight: normal; font-size: 11px; opacity: 0.6;"></span>
+                <div style="display: flex; gap: 8px;">
+                    <button class="secondary" id="btn-refresh-audit" style="padding: 4px 10px; font-size: 11px;">🔄 Refresh</button>
+                    <button class="secondary" id="btn-open-logs" style="padding: 4px 10px; font-size: 11px;">📂 Open Log Folder</button>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table id="audit-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 1px solid var(--vscode-widget-border);">
+                            <th style="padding: 8px 12px; opacity: 0.7;">Time</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Method</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Path</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Status</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Latency</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Tokens</th>
+                            <th style="padding: 8px 12px; opacity: 0.7;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-table-body">
+                        <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
+                            <td style="padding: 8px 12px; opacity: 0.6; font-style: italic;" colspan="7">Loading audit logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--vscode-widget-border);">
+                <div class="muted" style="font-size: 11px;" id="page-info">Showing 0-0 of 0</div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="secondary" id="btn-prev-page" disabled>Previous</button>
+                    <button class="secondary" id="btn-next-page" disabled>Next</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card full-width">
+            <h3>🛡️ Data Redaction</h3>
+            <p class="muted" style="margin-bottom: 16px;">
+                Toggle patterns to automatically redact sensitive data from logs. All patterns are applied in real-time.
+            </p>
+            
+            <!-- Built-in Patterns -->
+            <div style="margin-bottom: 20px;">
+                <h4 style="font-size: 13px; margin-bottom: 12px; opacity: 0.9;">Built-in Patterns</h4>
+                <div id="builtin-patterns-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    ${(config.redactionPatterns || []).filter((p: any) => p.isBuiltin).map((p: any) => `
+                        <div class="toggle-row" style="padding: 8px 12px; background: var(--vscode-editor-background); border-radius: 6px; border: 1px solid var(--vscode-widget-border);">
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <span style="font-weight: 600; font-size: 12px;">${p.name}</span>
+                                <code style="font-size: 10px; opacity: 0.6; word-break: break-all;">${p.pattern.length > 40 ? p.pattern.substring(0, 40) + '...' : p.pattern}</code>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" class="toggle-redaction" data-id="${p.id}" ${p.enabled ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <!-- Custom Patterns -->
+            <div style="border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
+                <h4 style="font-size: 13px; margin-bottom: 12px; opacity: 0.9;">Custom Patterns</h4>
+                
+                <div id="custom-patterns-list" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                    ${(config.redactionPatterns || []).filter((p: any) => !p.isBuiltin).map((p: any) => `
+                        <div class="toggle-row" style="padding: 8px 12px; background: var(--vscode-editor-background); border-radius: 6px; border: 1px solid var(--vscode-widget-border);">
+                            <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+                                <span style="font-weight: 600; font-size: 12px;">${p.name}</span>
+                                <code style="font-size: 10px; opacity: 0.6; word-break: break-all;">${p.pattern}</code>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <label class="switch">
+                                    <input type="checkbox" class="toggle-redaction" data-id="${p.id}" ${p.enabled ? 'checked' : ''}>
+                                    <span class="slider"></span>
+                                </label>
+                                <button class="secondary btn-remove-redaction" data-id="${p.id}" style="width: 28px; height: 28px; padding: 0; font-size: 14px;" title="Remove">×</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                    ${(config.redactionPatterns || []).filter(p => !p.isBuiltin).length === 0 ? '<span class="muted" style="text-align: center; padding: 12px;">No custom patterns added yet</span>' : ''}
+                </div>
+                
+                <!-- Add Custom Pattern Form -->
+                <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--vscode-textBlockQuote-background); border-radius: 8px;">
+                    <span style="font-size: 11px; font-weight: 600; opacity: 0.8;">ADD CUSTOM PATTERN</span>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <input type="text" id="redaction-name-input" placeholder="Pattern name (e.g. 'Bank Account')" style="flex: 1; min-width: 150px;">
+                        <input type="text" id="redaction-pattern-input" placeholder="Regex pattern" style="flex: 2; min-width: 200px;">
+                    </div>
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button class="secondary" id="btn-test-redaction" style="width: auto;">🧪 Test</button>
+                        <button class="secondary" id="btn-add-redaction" style="width: auto;">➕ Add Pattern</button>
+                    </div>
+                </div>
             </div>
         </div>
 
         <div class="card full-width">
-            <h3>📖 API Documentation</h3>
-            <p style="margin: 0 0 12px 0;">Interactive OpenAPI/Swagger documentation with try-it-out functionality.</p>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <a href="${url}/docs" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-radius: 6px; text-decoration: none; font-weight: 500;">
-                    <span>🔗 Open Swagger UI</span>
-                </a>
-                <a href="${url}/openapi.json" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid var(--vscode-widget-border); border-radius: 6px; text-decoration: none;">
-                    <span>📄 OpenAPI Spec (JSON)</span>
-                </a>
-            </div>
-            <div class="muted" style="margin-top: 12px;">Full API reference at <code>${url}/docs</code> — test endpoints directly in your browser</div>
-        </div>
-
-        <div class="card full-width">
-            <h3>📊 Real-time Stats</h3>
-            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-requests">${status.stats?.totalRequests ?? 0}</div>
-                    <div class="muted" style="font-size: 11px;">Total Requests</div>
+            <h3>\ud83d\udcda API Documentation</h3>
+            <p class="muted" style="margin-bottom: 16px;">
+                The gateway supports multiple API formats. Use the endpoints below with your favorite SDKs.
+            </p>
+            <div class="docs-grid">
+                <div class="doc-card">
+                    <h4><span>🤖</span> OpenAI <code>/v1</code></h4>
+                    <p>Compatible with OpenAI SDKs. Supports <code>chat/completions</code>, <code>completions</code>, and <code>models</code>.</p>
                 </div>
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-rpm">${status.realtimeStats?.requestsPerMinute ?? 0}</div>
-                    <div class="muted" style="font-size: 11px;">Requests/min</div>
+                <div class="doc-card">
+                    <h4><span>🧪</span> Anthropic <code>/v1</code></h4>
+                    <p>Compatible with Claude SDKs. Supports <code>/v1/messages</code> with full streaming (SSE).</p>
                 </div>
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-latency">${status.realtimeStats?.avgLatencyMs ?? 0}<span style="font-size: 12px;">ms</span></div>
-                    <div class="muted" style="font-size: 11px;">Avg Latency</div>
+                <div class="doc-card">
+                    <h4><span>🌟</span> Google <code>/v1beta</code></h4>
+                    <p>Compatible with Gemini SDKs. Supports <code>generateContent</code> and <code>streamGenerateContent</code>.</p>
                 </div>
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-tokens-in">${status.stats?.totalTokensIn ?? 0}</div>
-                    <div class="muted" style="font-size: 11px;">Tokens In</div>
-                </div>
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-tokens-out">${status.stats?.totalTokensOut ?? 0}</div>
-                    <div class="muted" style="font-size: 11px;">Tokens Out</div>
-                </div>
-                <div class="stat-box" style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-errors" style="color: ${(status.realtimeStats?.errorRate ?? 0) > 10 ? 'var(--vscode-testing-iconFailed)' : 'inherit'};">${status.realtimeStats?.errorRate ?? 0}<span style="font-size: 12px;">%</span></div>
-                    <div class="muted" style="font-size: 11px;">Error Rate</div>
+                <div class="doc-card">
+                    <h4><span>🔌</span> MCP Tools</h4>
+                    <p>MCP tools are automatically prefixed with <code>mcp_{server}_{tool}</code>. The gateway handles execution automatically in non-streaming mode.</p>
                 </div>
             </div>
-            <div class="muted" style="margin-top: 10px; font-size: 11px;">
-                Uptime: <span id="stat-uptime">${Math.floor((status.stats?.uptimeMs ?? 0) / 60000)}</span> minutes
-                • History: <span id="stat-history-count">${status.historyCount ?? 0}</span> entries
+            <div class="actions" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 16px;">
+                <a href="http://${config.host}:${config.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcdd Swagger UI</a>
+                <a href="http://${config.host}:${config.port}/openapi.json" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcc4 OpenAPI JSON</a>
             </div>
-        </div>
-
-        <div class="card full-width">
-            <h3>📜 Request History</h3>
-            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <button class="secondary" id="btn-refresh-history">🔄 Refresh</button>
-                <button class="secondary" id="btn-clear-history">🗑️ Clear History</button>
-            </div>
-            <div id="history-container" style="max-height: 400px; overflow-y: auto;">
-                <div class="muted">Click "Refresh" to load request history</div>
-            </div>
-        </div>
-
-        <div class="card full-width">
-            <h3>🔒 Data Redaction</h3>
-            <div class="muted" style="margin-bottom: 10px;">Add regex patterns to automatically redact sensitive information from request history (e.g., API keys, passwords, emails).</div>
-            <div class="inline-form" style="margin-bottom: 12px;">
-                <input id="redaction-pattern-input" type="text" placeholder="Regex pattern (e.g., password|secret|api[_-]?key)" style="flex: 1;" />
-                <button class="secondary" id="btn-add-redaction">Add Pattern</button>
-                <button class="secondary" id="btn-test-redaction" title="Test pattern">🧪</button>
-            </div>
-            <div id="redaction-patterns-list" style="display: flex; flex-direction: column; gap: 6px;">
-                ${config.redactionPatterns && config.redactionPatterns.length > 0 ? config.redactionPatterns.map((pattern: string, index: number) => `
-                <div class="redaction-pattern" style="display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--vscode-textBlockQuote-background); border-radius: 6px;">
-                    <code style="flex: 1; font-size: 12px; word-break: break-all;">${pattern}</code>
-                    <button class="secondary btn-remove-redaction" data-index="${index}" style="padding: 4px 8px; font-size: 11px;">Remove</button>
-                </div>
-                `).join('') : '<div class="muted">No redaction patterns configured</div>'}
-            </div>
-            <details style="margin-top: 12px;">
-                <summary style="cursor: pointer; font-size: 12px; opacity: 0.8;">Example Patterns</summary>
-                <div style="font-size: 11px; margin-top: 8px; padding: 8px; background: var(--vscode-textBlockQuote-background); border-radius: 6px;">
-                    <code>password|passwd|pwd</code> - Passwords<br>
-                    <code>api[_-]?key|apikey|secret[_-]?key</code> - API Keys<br>
-                    <code>[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}</code> - Email addresses<br>
-                    <code>\\b\\d{3}-\\d{2}-\\d{4}\\b</code> - SSN format<br>
-                    <code>\\b\\d{16}\\b</code> - Credit card numbers (basic)
-                </div>
-            </details>
         </div>
 
         <div class="card full-width" style="background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-sideBar-background) 90%, #3b82f6 10%), color-mix(in srgb, var(--vscode-sideBar-background) 95%, #8b5cf6 5%));">
@@ -536,8 +912,34 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                     </div>
                 </div>
                 <div class="muted" style="font-size: 11px; text-align: right;">
-                    GitHub Copilot API Gateway v0.0.1<br>
+                    GitHub Copilot API Gateway v${gateway.getVersion()}<br>
                     Made with ❤️ and ☕
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detail-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background: var(--vscode-sideBar-background); padding: 24px; border-radius: 12px; width: 80%; max-width: 800px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--vscode-widget-border); box-shadow: 0 4px 24px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;">Request Details</h3>
+                <button class="secondary" id="btn-close-modal" style="width: auto; padding: 6px 12px;">Close</button>
+            </div>
+            <div style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; padding-right: 8px;">
+                <div style="position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="margin: 0; opacity: 0.8;">Request</h4>
+                        <button class="secondary btn-copy-modal" data-target="modal-request" style="width: auto; padding: 2px 8px; font-size: 10px;">📋 Copy</button>
+                    </div>
+                    <pre id="modal-request" style="font-size: 11px; max-height: 300px; overflow: auto; margin: 0;"></pre>
+                </div>
+                <div style="position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="margin: 0; opacity: 0.8;">Response</h4>
+                        <button class="secondary btn-copy-modal" data-target="modal-response" style="width: auto; padding: 2px 8px; font-size: 10px;">📋 Copy</button>
+                    </div>
+                    <pre id="modal-response" style="font-size: 11px; max-height: 300px; overflow: auto; margin: 0;"></pre>
                 </div>
             </div>
         </div>
@@ -545,6 +947,12 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 
     <script nonce="${nonce}">
         var vscode = acquireVsCodeApi();
+        
+        // Pagination state - declare at top to avoid hoisting issues
+        var currentPage = 1;
+        var pageSize = 10;
+        var totalLogs = 0;
+        var lastLogs = [];
 
         document.getElementById('btn-toggle-server').onclick = function() {
             var running = this.getAttribute('data-running') === 'true';
@@ -643,6 +1051,127 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'setRateLimit', value: Number(v) || 0 });
         };
 
+        // Initialize on load
+        // try { initCharts(); } catch (e) { console.error('Failed to init charts', e); }
+        
+        // Request initial data
+        setTimeout(() => vscode.postMessage({ type: 'getAuditStats' }), 500);
+
+        document.getElementById('btn-refresh-audit').onclick = function() {
+            startCountdown(); // Reset timer
+            vscode.postMessage({ type: 'getAuditStats' });
+            vscode.postMessage({ type: 'getAuditLogs', value: { page: currentPage, pageSize: pageSize } });
+            this.textContent = '🔄 Loading...';
+            setTimeout(() => { this.textContent = '🔄 Refresh'; }, 1000);
+        };
+
+        document.getElementById('btn-open-logs').onclick = function() {
+            vscode.postMessage({ type: 'openLogFolder' });
+        };
+
+        // Modal Logic
+        // Modal Logic
+        const modal = document.getElementById('detail-modal');
+        function closeModal() {
+            modal.style.display = 'none';
+            document.body.style.overflow = ''; // Restore scrolling
+        }
+
+        document.getElementById('btn-close-modal').onclick = closeModal;
+        
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Global function for View button
+        window.showDetails = function(index) {
+            if (!lastLogs || !lastLogs[index]) return;
+            const log = lastLogs[index];
+            
+            const reqContent = {
+                headers: log.requestHeaders,
+                body: log.requestBody
+            };
+            const resContent = {
+                headers: log.responseHeaders,
+                body: log.responseBody,
+                error: log.error
+            };
+
+            document.getElementById('modal-request').textContent = JSON.stringify(reqContent, null, 2);
+            document.getElementById('modal-response').textContent = JSON.stringify(resContent, null, 2);
+            
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Lock scrolling
+        };
+
+        // Copy content from modal
+        document.querySelectorAll('.btn-copy-modal').forEach(btn => {
+            btn.onclick = function() {
+                const targetId = this.getAttribute('data-target');
+                const content = document.getElementById(targetId).textContent;
+                if (content) {
+                    navigator.clipboard.writeText(content).then(() => {
+                        const originalText = this.textContent;
+                        this.textContent = '✓ Copied';
+                        setTimeout(() => { this.textContent = originalText; }, 1500);
+                    });
+                }
+            };
+        });
+
+        // Auto-refresh Countdown Logic
+        let refreshTimer = 10;
+        let refreshIntervalVal = null;
+        const refreshSpan = document.getElementById('refresh-timer');
+        
+        function startCountdown() {
+            if (refreshIntervalVal) clearInterval(refreshIntervalVal);
+            
+            refreshTimer = 10;
+            updateTimerDisplay();
+            
+            refreshIntervalVal = setInterval(() => {
+                refreshTimer--;
+                updateTimerDisplay();
+                
+                if (refreshTimer <= 0) {
+                    refreshTimer = 10;
+                    vscode.postMessage({ type: 'getAuditStats' });
+                    // Also refresh current page of logs
+                    vscode.postMessage({ type: 'getAuditLogs', value: { page: currentPage, pageSize: pageSize } });
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            if (refreshSpan) {
+                refreshSpan.textContent = \`Refreshing in \${refreshTimer}s...\`;
+            }
+        }
+
+        startCountdown();
+
+        // IP Allowlist handlers
+        document.getElementById('btn-add-ip').onclick = function() {
+            var ip = document.getElementById('ip-allowlist-input').value.trim();
+            if (ip) {
+                vscode.postMessage({ type: 'addIpAllowlistEntry', value: ip });
+                document.getElementById('ip-allowlist-input').value = '';
+            }
+        };
+
+        document.querySelectorAll('.btn-remove-ip').forEach(function(btn) {
+            btn.onclick = function() {
+                var ip = btn.getAttribute('data-value');
+                if (ip) {
+                    vscode.postMessage({ type: 'removeIpAllowlistEntry', value: ip });
+                }
+            };
+        });
+
         document.getElementById('btn-host-local').onclick = function() {
             vscode.postMessage({ type: 'hostLocal' });
         };
@@ -665,39 +1194,64 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             };
         });
 
+        // MCP Toggle
+        var mcpToggle = document.getElementById('mcp-enabled-toggle');
+        if (mcpToggle) {
+            mcpToggle.onchange = function() {
+                vscode.postMessage({ type: 'toggleMcp', value: mcpToggle.checked });
+            };
+        }
+
         document.getElementById('btn-set-host').onclick = function() {
-            var v = document.getElementById('custom-host').value;
-            if (v) vscode.postMessage({ type: 'setHost', value: v });
+            var host = document.getElementById('custom-host').value;
+            var port = document.getElementById('custom-port').value;
+            if (host) vscode.postMessage({ type: 'setHost', value: host });
+            if (port) vscode.postMessage({ type: 'setPort', value: Number(port) });
         };
 
-        document.getElementById('btn-set-port').onclick = function() {
-            var v = document.getElementById('custom-port').value;
-            if (v) vscode.postMessage({ type: 'setPort', value: Number(v) });
+        // btn-set-port removed - consolidated with btn-set-host Apply button
+
+        document.getElementById('btn-set-timeout').onclick = function() {
+            var val = document.getElementById('timeout-input').value;
+            vscode.postMessage({ type: 'setRequestTimeout', value: Number(val) });
         };
 
-        document.getElementById('btn-set-model').onclick = function() {
-            var v = document.getElementById('model-input').value;
-            if (v) vscode.postMessage({ type: 'setModel', value: v });
+        document.getElementById('btn-set-payload').onclick = function() {
+            var val = document.getElementById('payload-input').value;
+            vscode.postMessage({ type: 'setMaxPayloadSize', value: Number(val) });
         };
 
-        // Request History handlers
-        document.getElementById('btn-refresh-history').onclick = function() {
-            vscode.postMessage({ type: 'getHistory' });
+        document.getElementById('btn-set-connections').onclick = function() {
+            var val = document.getElementById('connections-input').value;
+            vscode.postMessage({ type: 'setMaxConnectionsPerIp', value: Number(val) });
         };
 
-        document.getElementById('btn-clear-history').onclick = function() {
-            if (confirm('Are you sure you want to clear all request history?')) {
-                vscode.postMessage({ type: 'clearHistory' });
-                document.getElementById('history-container').innerHTML = '<div class="muted">History cleared</div>';
-            }
+        document.getElementById('btn-set-concurrency').onclick = function() {
+            var val = document.getElementById('concurrency-input').value;
+            vscode.postMessage({ type: 'setMaxConcurrency', value: Number(val) });
         };
+
+        // btn-set-model removed - element doesn't exist in current UI
 
         // Redaction pattern handlers
         document.getElementById('btn-add-redaction').onclick = function() {
+            var name = document.getElementById('redaction-name-input').value.trim();
             var pattern = document.getElementById('redaction-pattern-input').value.trim();
-            if (pattern) {
-                vscode.postMessage({ type: 'addRedactionPattern', value: pattern });
+            if (!name) {
+                alert('Please enter a pattern name');
+                return;
+            }
+            if (!pattern) {
+                alert('Please enter a regex pattern');
+                return;
+            }
+            try {
+                new RegExp(pattern); // Validate
+                vscode.postMessage({ type: 'addRedactionPattern', value: { name: name, pattern: pattern } });
+                document.getElementById('redaction-name-input').value = '';
                 document.getElementById('redaction-pattern-input').value = '';
+            } catch (e) {
+                alert('Invalid regex pattern: ' + e.message);
             }
         };
 
@@ -709,7 +1263,7 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             }
             try {
                 var regex = new RegExp(pattern, 'gi');
-                var testStr = prompt('Enter test string to check redaction:', 'my-api-key-12345');
+                var testStr = prompt('Enter test string to check redaction:', 'my-api-key-12345 or test@email.com');
                 if (testStr) {
                     var result = testStr.replace(regex, '[REDACTED]');
                     alert('Result: ' + result);
@@ -719,80 +1273,249 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             }
         };
 
+        // Toggle redaction pattern on/off
+        document.querySelectorAll('.toggle-redaction').forEach(function(toggle) {
+            toggle.onchange = function() {
+                var id = toggle.getAttribute('data-id');
+                var enabled = toggle.checked;
+                vscode.postMessage({ type: 'toggleRedactionPattern', value: { id: id, enabled: enabled } });
+            };
+        });
+
         // Remove redaction pattern buttons
         document.querySelectorAll('.btn-remove-redaction').forEach(function(btn) {
             btn.onclick = function() {
-                var index = parseInt(btn.getAttribute('data-index'));
-                vscode.postMessage({ type: 'removeRedactionPattern', value: index });
+                var id = btn.getAttribute('data-id');
+                if (id && confirm('Remove this pattern?')) {
+                    vscode.postMessage({ type: 'removeRedactionPattern', value: id });
+                }
             };
         });
 
         // Handle messages from extension
         window.addEventListener('message', function(event) {
             var message = event.data;
+            console.log('[Dashboard] Received message:', message.type, message);
             if (message.type === 'historyData') {
-                renderHistory(message.data);
+                // Legacy support if needed
             } else if (message.type === 'statsData') {
                 updateStats(message.data);
+            } else if (message.type === 'auditStatsData') {
+                updateCharts(message.data);
+            } else if (message.type === 'auditLogData') {
+                console.log('[Dashboard] Updating log table with', message.data?.length || 0, 'entries');
+                updateLogTable(message.data, message.page, message.total, message.pageSize);
+            } else if (message.type === 'liveLog') {
+                appendLog(message.value);
             }
         });
 
-        function renderHistory(history) {
-            var container = document.getElementById('history-container');
-            if (!history || history.length === 0) {
-                container.innerHTML = '<div class="muted">No requests recorded yet</div>';
+        // Pagination state variables moved to top of script
+
+        document.getElementById('btn-prev-page').onclick = function() {
+            if (currentPage > 1) {
+                currentPage--;
+                vscode.postMessage({ type: 'getAuditLogs', value: { page: currentPage, pageSize: pageSize } });
+                document.getElementById('audit-table-body').innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; opacity: 0.7;">Loading...</td></tr>';
+            }
+        };
+
+        document.getElementById('btn-next-page').onclick = function() {
+            if (currentPage * pageSize < totalLogs) {
+                currentPage++;
+                vscode.postMessage({ type: 'getAuditLogs', value: { page: currentPage, pageSize: pageSize } });
+                document.getElementById('audit-table-body').innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; opacity: 0.7;">Loading...</td></tr>';
+            }
+        };
+
+        function updateCharts(stats) {
+            // Charts removed per user request
+        }
+
+        // lastLogs declared at top of script
+
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+// Live Log Tail Logic
+        const logContainer = document.getElementById('live-log-container');
+        const autoScroll = document.getElementById('log-autoscroll');
+        const logStatus = document.getElementById('log-status-indicator');
+        let linesCount = 0;
+
+        function appendLog(log) {
+            if (!logContainer) return;
+            if (linesCount === 0) logContainer.innerHTML = '';
+            
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            
+            const isError = log.status >= 400;
+            const statusClass = isError ? 'error' : 'success';
+            
+            const time = new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            line.innerHTML = '<span class="log-time">[' + time + ']</span>' +
+                             '<span class="log-method">' + (log.method || 'UNK') + '</span>' +
+                             '<span class="log-path">' + (log.path || '/') + '</span>' +
+                             '<span class="log-status ' + statusClass + '">' + (log.status || 0) + '</span>' +
+                             '<span class="log-latency">' + (log.durationMs || 0) + 'ms</span>';
+
+            
+            logContainer.appendChild(line);
+            linesCount++;
+            
+            // Pulse status indicator
+            if (logStatus) {
+                logStatus.classList.remove('active');
+                void logStatus.offsetWidth; // Trigger reflow
+                logStatus.classList.add('active');
+            }
+            
+            // Limit shown lines to 100 for performance
+            if (linesCount > 100) {
+                logContainer.removeChild(logContainer.firstChild);
+                linesCount--;
+            }
+            
+            if (autoScroll && autoScroll.checked) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+
+        document.getElementById('btn-clear-logs').onclick = function() {
+            if (logContainer) {
+                logContainer.innerHTML = '<div class="muted" style="text-align: center; padding-top: 120px; opacity: 0.5;">Waiting for API requests...</div>';
+                linesCount = 0;
+            }
+        };
+
+        function updateLogTable(logs, page, total, pSize) {
+            lastLogs = logs;
+            currentPage = page;
+            totalLogs = total;
+            pageSize = pSize || 10;
+
+            const tbody = document.getElementById('audit-table-body');
+            const pageInfo = document.getElementById('page-info');
+            const btnPrev = document.getElementById('btn-prev-page');
+            const btnNext = document.getElementById('btn-next-page');
+
+            if (pageInfo) {
+                const start = (page - 1) * pageSize + 1;
+                const end = Math.min(page * pageSize, total);
+                pageInfo.textContent = \`Showing \${total === 0 ? 0 : start}-\${end} of \${total}\`;
+            }
+            if (btnPrev) btnPrev.disabled = page <= 1;
+            if (btnNext) btnNext.disabled = page * pageSize >= total;
+
+            if (!tbody) return;
+            
+            // Clear checks to force refresh
+            tbody.innerHTML = '';
+            
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="padding: 24px; text-align: center; opacity: 0.6; font-style: italic;">No audit logs found.<br><span style="font-size: 11px; opacity: 0.8; margin-top: 4px; display: block;">Make a request to generate logs.</span></td></tr>';
                 return;
             }
 
-            var html = history.map(function(entry, index) {
-                var statusColor = entry.status < 400 ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
-                var timestamp = new Date(entry.timestamp).toLocaleString();
-                return '<details style="margin-bottom: 8px; background: var(--vscode-textBlockQuote-background); border-radius: 6px; overflow: hidden;">' +
-                    '<summary style="padding: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px;">' +
-                        '<span style="font-weight: 600; color: ' + statusColor + ';">' + entry.status + '</span>' +
-                        '<code style="font-size: 11px;">' + entry.method + ' ' + entry.path + '</code>' +
-                        '<span class="muted" style="font-size: 10px;">' + entry.durationMs + 'ms</span>' +
-                        '<span class="muted" style="font-size: 10px; margin-left: auto;">' + timestamp + '</span>' +
-                    '</summary>' +
-                    '<div style="padding: 10px; border-top: 1px solid var(--vscode-widget-border);">' +
-                        '<div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 11px; margin-bottom: 8px;">' +
-                            '<div class="label">ID</div><div class="value">' + entry.id + '</div>' +
-                            '<div class="label">Model</div><div class="value">' + (entry.model || 'N/A') + '</div>' +
-                            '<div class="label">Tokens</div><div class="value">In: ' + (entry.tokensIn || 0) + ' / Out: ' + (entry.tokensOut || 0) + '</div>' +
-                        '</div>' +
-                        (entry.error ? '<div style="color: var(--vscode-testing-iconFailed); margin-bottom: 8px;">Error: ' + entry.error + '</div>' : '') +
-                        (entry.requestPayload ? '<details style="margin-bottom: 6px;"><summary style="cursor: pointer; font-size: 11px;">Request Payload</summary><pre style="font-size: 10px; margin: 4px 0; padding: 8px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; overflow: auto; max-height: 200px;">' + JSON.stringify(entry.requestPayload, null, 2) + '</pre></details>' : '') +
-                        (entry.responsePayload ? '<details><summary style="cursor: pointer; font-size: 11px;">Response Payload</summary><pre style="font-size: 10px; margin: 4px 0; padding: 8px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; overflow: auto; max-height: 200px;">' + JSON.stringify(entry.responsePayload, null, 2) + '</pre></details>' : '') +
-                    '</div>' +
-                '</details>';
-            }).join('');
+            tbody.innerHTML = logs.map((log, index) => {
+                const date = new Date(log.timestamp);
+                const time = date.toLocaleTimeString();
+                const statusColor = log.status >= 400 ? 'var(--vscode-testing-iconFailed)' : (log.status >= 300 ? 'var(--vscode-charts-yellow)' : 'var(--vscode-testing-iconPassed)');
+                
+                return \`
+                <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
+                    <td style="padding: 8px 12px; white-space: nowrap; opacity: 0.8;">\${time}</td>
+                    <td style="padding: 8px 12px; white-space: nowrap;"><span style="padding: 2px 6px; border-radius: 4px; background: var(--vscode-textCodeBlock-background); font-size: 11px; font-family: var(--vscode-editor-font-family);">\${log.method || 'UNK'}</span></td>
+                    <td style="padding: 8px 12px; word-break: break-all; font-family: var(--vscode-editor-font-family);">\${log.path || '/'}</td>
+                    <td style="padding: 8px 12px; color: \${statusColor}; font-weight: 600;">\${log.status || 0}</td>
+                    <td style="padding: 8px 12px;">\${log.durationMs || 0}ms</td>
+                    <td style="padding: 8px 12px;" title="\${(log.tokensIn || 0) + (log.tokensOut || 0)} tokens">\${formatNumber ? formatNumber((log.tokensIn || 0) + (log.tokensOut || 0)) : 0}</td>
+                    <td style="padding: 8px 12px;">
+                        <button class="secondary btn-view-details" data-index="\${index}" style="padding: 2px 8px; font-size: 10px; width: auto;">🔍</button>
+                    </td>
+                </tr>\`;
+    }).join('');
 
-            container.innerHTML = html;
+    // Add event listeners for view buttons (CSP safe)
+    document.querySelectorAll('.btn-view-details').forEach(btn => {
+        btn.addEventListener('click', () => {
+             const index = parseInt(btn.getAttribute('data-index') || '0');
+             showDetails(index);
+        });
+    });
+}
+
+function updateStats(stats) {
+    if (stats.totalRequests !== undefined) {
+        document.getElementById('stat-requests').textContent = formatNumber(stats.totalRequests);
+        document.getElementById('stat-requests').title = stats.totalRequests + ' requests';
+    }
+    if (stats.requestsPerMinute !== undefined) document.getElementById('stat-rpm').textContent = stats.requestsPerMinute;
+    if (stats.avgLatencyMs !== undefined) document.getElementById('stat-latency').innerHTML = stats.avgLatencyMs + '<span style="font-size: 12px;">ms</span>';
+    if (stats.totalTokensIn !== undefined) {
+        document.getElementById('stat-tokens-in').textContent = formatNumber(stats.totalTokensIn);
+        document.getElementById('stat-tokens-in').title = stats.totalTokensIn;
+    }
+    if (stats.totalTokensOut !== undefined) {
+        document.getElementById('stat-tokens-out').textContent = formatNumber(stats.totalTokensOut);
+        document.getElementById('stat-tokens-out').title = stats.totalTokensOut;
+    }
+    if (stats.errorRate !== undefined) document.getElementById('stat-errors').innerHTML = stats.errorRate + '<span style="font-size: 12px;">%</span>';
+    if (stats.uptimeMs !== undefined) {
+        var minutes = Math.floor(stats.uptimeMs / 60000);
+        var hours = Math.floor(minutes / 60);
+        var display = hours > 0 ? hours + 'h ' + (minutes % 60) + 'm' : minutes + 'm';
+        document.getElementById('stat-uptime').textContent = display;
+    }
+    
+    // Update MCP Status
+    if (stats.mcp) {
+        var mcpEnabled = stats.mcp.enabled;
+        var statusBadge = document.getElementById('mcp-status-badge');
+        if (statusBadge) {
+            statusBadge.textContent = mcpEnabled ? (stats.mcp.servers.length > 0 ? 'Connected' : 'Ready') : 'Disabled';
+            statusBadge.style.background = mcpEnabled ? (stats.mcp.servers.length > 0 ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)') : 'var(--vscode-charts-red)';
+            statusBadge.style.color = 'white';
+            statusBadge.style.padding = '2px 8px';
+            statusBadge.style.borderRadius = '10px';
+            statusBadge.style.fontSize = '10px';
         }
 
-        function updateStats(stats) {
-            if (stats.totalRequests !== undefined) document.getElementById('stat-requests').textContent = stats.totalRequests;
-            if (stats.requestsPerMinute !== undefined) document.getElementById('stat-rpm').textContent = stats.requestsPerMinute;
-            if (stats.avgLatencyMs !== undefined) document.getElementById('stat-latency').innerHTML = stats.avgLatencyMs + '<span style="font-size: 12px;">ms</span>';
-            if (stats.totalTokensIn !== undefined) document.getElementById('stat-tokens-in').textContent = stats.totalTokensIn;
-            if (stats.totalTokensOut !== undefined) document.getElementById('stat-tokens-out').textContent = stats.totalTokensOut;
-            if (stats.errorRate !== undefined) document.getElementById('stat-errors').innerHTML = stats.errorRate + '<span style="font-size: 12px;">%</span>';
-            if (stats.uptimeMs !== undefined) document.getElementById('stat-uptime').textContent = Math.floor(stats.uptimeMs / 60000);
-        }
+        document.getElementById('mcp-servers-count').textContent = stats.mcp.servers.length;
+        document.getElementById('mcp-servers-list').textContent = stats.mcp.servers.length > 0 ? stats.mcp.servers.join(', ') : 'None';
+        
+        document.getElementById('mcp-tools-count').textContent = stats.mcp.tools.length;
+        var toolsList = stats.mcp.tools.map(function(t) { return t.name; }).join(', ');
+        document.getElementById('mcp-tools-list').textContent = toolsList || 'None';
+        
+        var toggle = document.getElementById('mcp-enabled-toggle');
+        if (toggle) toggle.checked = mcpEnabled;
+    }
+}
 
-        // Auto-refresh stats every 5 seconds
-        setInterval(function() {
-            vscode.postMessage({ type: 'getStats' });
-        }, 5000);
+// Auto-refresh stats every 5 seconds
+setInterval(function () {
+    vscode.postMessage({ type: 'getStats' });
+}, 5000);
 
-        // Load history on page load
-        vscode.postMessage({ type: 'getHistory' });
-    </script>
-</body>
-</html>`;
+// Load audit data on page load
+// Load audit data on page load
+vscode.postMessage({ type: 'getAuditStats' });
+vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
+</script>
+    </body>
+    </html>`;
     }
 
-    public resolveWebviewView(
+    public async resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
@@ -803,12 +1526,12 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
 
-        webviewView.webview.html = this._getSidebarHtml(webviewView.webview);
+        webviewView.webview.html = await this._getSidebarHtml(webviewView.webview);
 
-        webviewView.webview.onDidReceiveMessage(data => {
+        webviewView.webview.onDidReceiveMessage(async data => {
             switch (data.type) {
                 case 'openDashboard':
-                    CopilotPanel.createOrShow(this._extensionUri, this._gateway);
+                    await CopilotPanel.createOrShow(this._extensionUri, this._gateway);
                     break;
                 case 'startServer':
                     void this._gateway.startServer();
