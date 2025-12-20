@@ -8,6 +8,8 @@ A production-ready VS Code extension that exposes GitHub Copilot as a local HTTP
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991?logo=openai)](https://platform.openai.com/docs/api-reference)
 
+![GitHub Copilot API Gateway Dashboard](Showcase.png)
+
 ---
 
 ## Overview
