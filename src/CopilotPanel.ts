@@ -34,14 +34,19 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 
     /**
      * Opens the dashboard as a full-size editor panel (not a sidebar view).
+     * @param scrollTarget Optional target to scroll to after opening (e.g., 'wiki')
      */
-    public static async createOrShow(extensionUri: vscode.Uri, gateway: CopilotApiGateway): Promise<void> {
+    public static async createOrShow(extensionUri: vscode.Uri, gateway: CopilotApiGateway, scrollTarget?: string): Promise<void> {
         const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
 
         if (CopilotPanel.currentPanel) {
             CopilotPanel.currentPanel.reveal(column);
             // Update HTML in case state changed
             CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+            // If scroll target provided, send message to scroll
+            if (scrollTarget) {
+                CopilotPanel.currentPanel.webview.postMessage({ type: 'scrollTo', target: scrollTarget });
+            }
             return;
         }
 
@@ -59,6 +64,13 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         CopilotPanel.currentPanel = panel;
 
         panel.webview.html = await CopilotPanel.getPanelHtml(panel.webview, gateway);
+
+        // If scroll target provided, send message after a short delay to ensure DOM is ready
+        if (scrollTarget) {
+            setTimeout(() => {
+                panel.webview.postMessage({ type: 'scrollTo', target: scrollTarget });
+            }, 300);
+        }
 
         panel.webview.onDidReceiveMessage(
             data => {
@@ -294,6 +306,50 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                     void vscode.window.showErrorMessage('Log folder not found');
                 }
                 break;
+            case 'generatePrompt':
+            case 'enhancePrompt':
+                if ((data as any).data && typeof (data as any).data === 'object') {
+                    const promptData = (data as any).data as { projectType?: string; techStack?: string; goal?: string; complexity?: string; context?: string; existingPrompt?: string };
+                    const isEnhance = data.type === 'enhancePrompt';
+
+                    // Build the meta-prompt
+                    let metaPrompt = isEnhance
+                        ? `You are an expert prompt engineer. Enhance and improve the following prompt to make it more detailed, specific, and effective:\n\n${promptData.existingPrompt || promptData.context}\n\nMake it more comprehensive with clear objectives, constraints, and expected deliverables.`
+                        : `You are an expert prompt engineer. Create a comprehensive, high-quality prompt for an AI coding assistant based on these specifications:
+
+${promptData.projectType ? `**Project Type:** ${promptData.projectType}` : ''}
+${promptData.techStack ? `**Tech Stack:** ${promptData.techStack}` : ''}
+${promptData.goal ? `**Goal:** ${promptData.goal}` : ''}
+${promptData.complexity ? `**Complexity Level:** ${promptData.complexity}` : ''}
+${promptData.context ? `**User Description:** ${promptData.context}` : ''}
+
+Generate a detailed, actionable prompt that includes:
+1. Clear project objective and scope
+2. Specific technical requirements
+3. Step-by-step implementation plan
+4. Best practices and considerations
+5. Expected deliverables and success criteria
+
+Format the output as a ready-to-use prompt that the user can copy and paste into an AI assistant.`;
+
+                    // Make the API call
+                    gateway.invokeCopilot(metaPrompt).then((response: string) => {
+                        if (CopilotPanel.currentPanel) {
+                            void CopilotPanel.currentPanel.webview.postMessage({
+                                type: 'promptResult',
+                                data: response
+                            });
+                        }
+                    }).catch((err: Error) => {
+                        if (CopilotPanel.currentPanel) {
+                            void CopilotPanel.currentPanel.webview.postMessage({
+                                type: 'promptError',
+                                error: err.message
+                            });
+                        }
+                    });
+                }
+                break;
         }
     }
 
@@ -324,6 +380,8 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
         button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
         .hint { font-size: 11px; opacity: 0.7; text-align: center; margin-top: 8px; }
+        .btn-group { display: flex; gap: 6px; margin-bottom: 8px; }
+        .btn-group button { width: auto; flex: 1; padding: 6px 10px; font-size: 11px; }
     </style>
 </head>
 <body>
@@ -338,6 +396,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     <div class="url">${url}</div>
     <button id="btn-dashboard">Open Dashboard</button>
     <button id="btn-toggle" class="secondary">${isRunning ? 'Stop Server' : 'Start Server'}</button>
+    <button id="btn-swagger" class="secondary">📝 Swagger</button>
+    <button id="btn-wiki" class="secondary">📚 Wiki</button>
+    <button id="btn-prompt" class="secondary">✨ Prompt Generator</button>
     <div class="hint">Use the dashboard for full controls</div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
@@ -346,6 +407,15 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         });
         document.getElementById('btn-toggle').addEventListener('click', () => {
             vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' });
+        });
+        document.getElementById('btn-swagger').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openSwagger' });
+        });
+        document.getElementById('btn-wiki').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openWiki' });
+        });
+        document.getElementById('btn-prompt').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openPromptGenerator' });
         });
     </script>
 </body>
@@ -723,7 +793,7 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 
         <!-- MCP Status -->
         <div class="card full-width" id="mcp-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">🔌 MCP Status <span id="mcp-status-badge" class="badge">Checking...</span></h3>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <label style="font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; opacity: 0.8;">
@@ -731,17 +801,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                     </label>
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
-                <div style="padding: 12px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <div class="muted" style="font-size: 11px; margin-bottom: 4px;">Connected Servers</div>
-                    <div id="mcp-servers-count" style="font-size: 18px; font-weight: 600;">0</div>
-                    <div id="mcp-servers-list" class="muted" style="font-size: 10px; margin-top: 4px;">None</div>
-                </div>
-                <div style="padding: 12px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: rgba(0,0,0,0.1);">
-                    <div class="muted" style="font-size: 11px; margin-bottom: 4px;">Available Tools</div>
-                    <div id="mcp-tools-count" style="font-size: 18px; font-weight: 600;">0</div>
-                    <div id="mcp-tools-list" class="muted" style="font-size: 10px; margin-top: 4px; max-height: 60px; overflow-y: auto;">None</div>
-                </div>
+            
+            <div id="mcp-content-area">
+                <div class="muted" style="text-align: center; padding: 20px;">Loading tools...</div>
             </div>
         </div>
 
@@ -914,6 +976,571 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 <div class="muted" style="font-size: 11px; text-align: right;">
                     GitHub Copilot API Gateway v${gateway.getVersion()}<br>
                     Made with ❤️ and ☕
+                </div>
+            </div>
+        </div>
+
+        <!-- Prompt Generator Section -->
+        <div id="prompt-generator-section" class="card full-width" style="background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-sideBar-background) 95%, #8b5cf6 5%), color-mix(in srgb, var(--vscode-sideBar-background) 98%, #7c3aed 2%));">
+            <h3>✨ Prompt Generator</h3>
+            <p class="muted" style="margin-bottom: 16px;">Create high-quality, detailed prompts for AI assistants. Select options or describe what you need. <span style="opacity: 0.7; font-size: 10px;">💡 Uses Copilot directly - server not required</span></p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <!-- Project Type -->
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.8;">🎯 Project Type</label>
+                    <select id="prompt-project-type" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 12px;">
+                        <option value="">Select type...</option>
+                        <option value="web-app">Web Application</option>
+                        <option value="mobile-app">Mobile App</option>
+                        <option value="api">REST API / Backend</option>
+                        <option value="cli">CLI Tool</option>
+                        <option value="library">Library / Package</option>
+                        <option value="automation">Automation Script</option>
+                        <option value="data">Data Processing</option>
+                        <option value="ml">Machine Learning</option>
+                        <option value="devops">DevOps / Infrastructure</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <!-- Tech Stack -->
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.8;">🛠️ Tech Stack</label>
+                    <select id="prompt-tech-stack" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 12px;">
+                        <option value="">Select stack...</option>
+                        <option value="typescript-node">TypeScript + Node.js</option>
+                        <option value="python">Python</option>
+                        <option value="react">React + TypeScript</option>
+                        <option value="nextjs">Next.js</option>
+                        <option value="vue">Vue.js</option>
+                        <option value="rust">Rust</option>
+                        <option value="go">Go</option>
+                        <option value="java">Java / Spring</option>
+                        <option value="csharp">.NET / C#</option>
+                        <option value="swift">Swift / iOS</option>
+                        <option value="kotlin">Kotlin / Android</option>
+                        <option value="flutter">Flutter / Dart</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                
+                <!-- Goal -->
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.8;">🎪 Goal</label>
+                    <select id="prompt-goal" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 12px;">
+                        <option value="">Select goal...</option>
+                        <option value="build-new">Build from scratch</option>
+                        <option value="add-feature">Add new feature</option>
+                        <option value="refactor">Refactor / Improve</option>
+                        <option value="debug">Debug / Fix issues</option>
+                        <option value="optimize">Optimize performance</option>
+                        <option value="test">Write tests</option>
+                        <option value="document">Write documentation</option>
+                        <option value="review">Code review</option>
+                        <option value="migrate">Migrate / Upgrade</option>
+                        <option value="learn">Learn / Explain</option>
+                    </select>
+                </div>
+                
+                <!-- Complexity -->
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.8;">📊 Complexity</label>
+                    <select id="prompt-complexity" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 12px;">
+                        <option value="">Select level...</option>
+                        <option value="simple">Simple / Quick task</option>
+                        <option value="medium">Medium complexity</option>
+                        <option value="complex">Complex / Multi-step</option>
+                        <option value="enterprise">Enterprise-grade</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Custom Context -->
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 4px; opacity: 0.8;">📝 Describe what you want to build</label>
+                <textarea id="prompt-context" placeholder="E.g., 'A user authentication system with OAuth, password reset, and role-based access control...'" style="width: 100%; min-height: 80px; padding: 10px; border-radius: 6px; border: 1px solid var(--vscode-widget-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size: 12px; resize: vertical; font-family: inherit; box-sizing: border-box;"></textarea>
+            </div>
+            
+            <!-- Generate Button -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button id="btn-generate-prompt" style="flex: 1; padding: 10px 16px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    ✨ Generate Prompt
+                </button>
+                <button id="btn-enhance-prompt" class="secondary" style="padding: 10px 16px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 6px; cursor: pointer; font-size: 12px;" title="Enhance with AI suggestions">
+                    🚀 Enhance
+                </button>
+            </div>
+            
+            <!-- Output Area -->
+            <div id="prompt-output-container" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label style="font-size: 11px; font-weight: 600; opacity: 0.8;">📋 Generated Prompt</label>
+                    <div style="display: flex; gap: 4px;">
+                        <button id="btn-copy-prompt" class="secondary" style="padding: 4px 10px; font-size: 10px; border-radius: 4px; cursor: pointer; border: none; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);">📋 Copy</button>
+                        <button id="btn-export-prompt" class="secondary" style="padding: 4px 10px; font-size: 10px; border-radius: 4px; cursor: pointer; border: none; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);">💾 Export</button>
+                    </div>
+                </div>
+                <div id="prompt-output" style="background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); border-radius: 8px; padding: 16px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; max-height: 400px; overflow-y: auto; font-family: var(--vscode-editor-font-family);"></div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="prompt-loading" style="display: none; text-align: center; padding: 20px;">
+                <div style="display: inline-block; animation: spin 1s linear infinite; font-size: 24px;">⚙️</div>
+                <div class="muted" style="margin-top: 8px;">Generating your prompt with AI...</div>
+            </div>
+        </div>
+
+        <!-- Mini Wiki Section -->
+        <div id="wiki-section" class="card full-width" style="background: linear-gradient(135deg, color-mix(in srgb, var(--vscode-sideBar-background) 92%, #10b981 8%), color-mix(in srgb, var(--vscode-sideBar-background) 96%, #059669 4%));">
+            <h3>📚 API Usage Guide</h3>
+            <p class="muted" style="margin-bottom: 16px;">Complete reference for connecting to the Copilot API Gateway from various languages, with installation instructions and real-world examples.</p>
+            
+            <!-- Tab Navigation -->
+            <div id="wiki-tabs" style="display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;">
+                <button class="wiki-tab active" data-tab="python" style="padding: 8px 16px; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; font-weight: 600;">🐍 Python</button>
+                <button class="wiki-tab" data-tab="javascript" style="padding: 8px 16px; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; font-weight: 600;">📜 JavaScript</button>
+                <button class="wiki-tab" data-tab="curl" style="padding: 8px 16px; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; font-weight: 600;">🔧 cURL</button>
+                <button class="wiki-tab" data-tab="mcp" style="padding: 8px 16px; border: none; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px; font-weight: 600;">🔌 MCP Tools</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="wiki-content" style="background: var(--vscode-editor-background); border-radius: 0 8px 8px 8px; padding: 16px; max-height: 600px; overflow-y: auto;">
+                
+                <!-- Python Tab -->
+                <div class="wiki-panel" data-panel="python">
+                    <h4 style="margin-top: 0; color: var(--vscode-textLink-foreground);">📦 Installation</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;"># Install the OpenAI Python library
+pip install openai
+
+# Or with Anthropic support
+pip install anthropic</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🚀 Quick Start - OpenAI SDK</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">from openai import OpenAI
+
+# Point to your local Copilot API Gateway
+client = OpenAI(
+    base_url="http://${config.host}:${config.port}/v1",
+    api_key="not-needed"  # API key not required unless configured
+)
+
+# Simple chat completion
+response = client.chat.completions.create(
+    model="gpt-4o",  # or "claude-3.5-sonnet", "o1-mini", etc.
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Explain quantum computing in simple terms"}
+    ],
+    temperature=0.7,
+    max_tokens=500
+)
+
+print(response.choices[0].message.content)</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">📡 Streaming Responses</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://${config.host}:${config.port}/v1",
+    api_key="not-needed"
+)
+
+# Stream the response in real-time
+stream = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Write a haiku about coding"}],
+    stream=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()  # Newline at end</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🔧 Function Calling (Tool Use)</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">from openai import OpenAI
+import json
+
+client = OpenAI(
+    base_url="http://${config.host}:${config.port}/v1",
+    api_key="not-needed"
+)
+
+# Define tools/functions
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "City name"},
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+                },
+                "required": ["location"]
+            }
+        }
+    }
+]
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "What's the weather in Tokyo?"}],
+    tools=tools,
+    tool_choice="auto"
+)
+
+# Check if model wants to call a function
+if response.choices[0].message.tool_calls:
+    tool_call = response.choices[0].message.tool_calls[0]
+    print(f"Function: {tool_call.function.name}")
+    print(f"Arguments: {tool_call.function.arguments}")</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🎭 Using with Anthropic SDK</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">import anthropic
+
+client = anthropic.Anthropic(
+    base_url="http://${config.host}:${config.port}",
+    api_key="not-needed"
+)
+
+message = client.messages.create(
+    model="claude-3.5-sonnet",
+    max_tokens=1024,
+    system="You are a helpful coding assistant.",
+    messages=[
+        {"role": "user", "content": "Write a Python function to calculate fibonacci"}
+    ]
+)
+
+print(message.content[0].text)</pre>
+                </div>
+
+                <!-- JavaScript Tab -->
+                <div class="wiki-panel" data-panel="javascript" style="display: none;">
+                    <h4 style="margin-top: 0; color: var(--vscode-textLink-foreground);">📦 Installation</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;"># Node.js - Install OpenAI SDK
+npm install openai
+
+# Or with yarn
+yarn add openai</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🚀 Quick Start - Node.js</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://${config.host}:${config.port}/v1',
+  apiKey: 'not-needed'
+});
+
+async function chat() {
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'Hello!' }
+    ]
+  });
+
+  console.log(completion.choices[0].message.content);
+}
+
+chat();</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">📡 Streaming Responses</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://${config.host}:${config.port}/v1',
+  apiKey: 'not-needed'
+});
+
+async function streamChat() {
+  const stream = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: 'Tell me a story' }],
+    stream: true
+  });
+
+  for await (const chunk of stream) {
+    const content = chunk.choices[0]?.delta?.content || '';
+    process.stdout.write(content);
+  }
+}
+
+streamChat();</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🌐 Browser - Fetch API</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">async function chat(message) {
+  const response = await fetch('http://${config.host}:${config.port}/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: message }]
+    })
+  });
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+// Usage
+const answer = await chat('What is the capital of France?');
+console.log(answer);</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🔧 Function Calling</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://${config.host}:${config.port}/v1',
+  apiKey: 'not-needed'
+});
+
+const tools = [{
+  type: 'function',
+  function: {
+    name: 'search_database',
+    description: 'Search for records in database',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        limit: { type: 'number', description: 'Max results' }
+      },
+      required: ['query']
+    }
+  }
+}];
+
+const response = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'Find all users named John' }],
+  tools: tools
+});
+
+console.log(response.choices[0].message.tool_calls);</pre>
+                </div>
+
+                <!-- cURL Tab -->
+                <div class="wiki-panel" data-panel="curl" style="display: none;">
+                    <h4 style="margin-top: 0; color: var(--vscode-textLink-foreground);">🚀 Basic Chat Completion</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">📡 Streaming Response</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -N \\
+  -d '{
+    "model": "gpt-4o",
+    "stream": true,
+    "messages": [{"role": "user", "content": "Write a poem about AI"}]
+  }'</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🔐 With API Key Authentication</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer your-secret-api-key" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">📋 List Available Models</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/models</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🎭 Anthropic Endpoint (Claude)</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/messages \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: not-needed" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -d '{
+    "model": "claude-3.5-sonnet",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello Claude!"}]
+  }'</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🔧 Function Calling</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "What time is it in London?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_time",
+        "description": "Get current time for a timezone",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "timezone": {"type": "string"}
+          }
+        }
+      }
+    }]
+  }'</pre>
+                </div>
+
+                <!-- MCP Tools Tab -->
+                <div class="wiki-panel" data-panel="mcp" style="display: none;">
+                    <h4 style="margin-top: 0; color: var(--vscode-textLink-foreground);">⚙️ Configure MCP Servers (settings.json)</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">// Add to your VS Code settings.json
+"githubCopilotApi.mcp.servers": {
+  // Filesystem access
+  "filesystem": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
+  },
+  // Git operations
+  "git": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-git"]
+  },
+  // Remote MCP server via SSE
+  "remote-tools": {
+    "url": "http://your-server:8000/sse"
+  }
+}</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🖥️ Built-in VS Code Tools</h4>
+                    <p class="muted" style="font-size: 11px; margin-bottom: 12px;">These tools are automatically available without any configuration:</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                        <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px; border-left: 3px solid #10b981;">
+                            <code style="font-size: 12px; color: var(--vscode-textPreformat-foreground); font-weight: 600;">vscode_read_file</code>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Read the contents of any file in the workspace</div>
+                            <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 10px; margin-top: 8px;">{ "uri": "file:///path/to/file.ts" }</pre>
+                        </div>
+                        
+                        <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px; border-left: 3px solid #3b82f6;">
+                            <code style="font-size: 12px; color: var(--vscode-textPreformat-foreground); font-weight: 600;">vscode_list_files</code>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">List files in a directory with optional glob pattern</div>
+                            <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 10px; margin-top: 8px;">{ "folder": "/src", "pattern": "**/*.ts" }</pre>
+                        </div>
+                        
+                        <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                            <code style="font-size: 12px; color: var(--vscode-textPreformat-foreground); font-weight: 600;">vscode_open_file</code>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Open a file in VS Code editor, optionally at specific lines</div>
+                            <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 10px; margin-top: 8px;">{ "uri": "file:///path/to/file.ts", "startLine": 10, "endLine": 20 }</pre>
+                        </div>
+                        
+                        <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px; border-left: 3px solid #ef4444;">
+                            <code style="font-size: 12px; color: var(--vscode-textPreformat-foreground); font-weight: 600;">vscode_get_diagnostics</code>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Get current errors and warnings from the Problems panel</div>
+                            <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 10px; margin-top: 8px;">{ "maxResults": 50 }</pre>
+                        </div>
+                        
+                        <div style="background: rgba(0,0,0,0.15); padding: 12px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                            <code style="font-size: 12px; color: var(--vscode-textPreformat-foreground); font-weight: 600;">vscode_get_active_editor</code>
+                            <div class="muted" style="font-size: 11px; margin-top: 4px;">Get content and cursor position of currently open file</div>
+                            <pre style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; font-size: 10px; margin-top: 8px;">{ } // No parameters needed</pre>
+                        </div>
+                    </div>
+
+                    <h4 style="color: var(--vscode-textLink-foreground); margin-top: 20px;">🐍 Using VS Code Tools with Python</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://${config.host}:${config.port}/v1",
+    api_key="not-needed"
+)
+
+# Define the VS Code tools
+vscode_tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "vscode_read_file",
+            "description": "Read the contents of a file",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uri": {"type": "string", "description": "File URI (file:///path/to/file)"}
+                },
+                "required": ["uri"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vscode_get_diagnostics",
+            "description": "Get current errors and warnings",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "maxResults": {"type": "number", "description": "Max results to return"}
+                }
+            }
+        }
+    }
+]
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {"role": "user", "content": "Read package.json and tell me the version"}
+    ],
+    tools=vscode_tools,
+    tool_choice="auto"
+)
+
+# The gateway will automatically execute the tool and return results
+if response.choices[0].message.tool_calls:
+    for tool_call in response.choices[0].message.tool_calls:
+        print(f"Tool: {tool_call.function.name}")
+        print(f"Args: {tool_call.function.arguments}")</pre>
+
+                    <h4 style="color: var(--vscode-textLink-foreground);">🔧 cURL Example with MCP Tools</h4>
+                    <pre style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [
+      {"role": "user", "content": "List all TypeScript files in /src and check for errors"}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "vscode_list_files",
+          "description": "List files matching pattern",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "folder": {"type": "string"},
+              "pattern": {"type": "string"}
+            }
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "vscode_get_diagnostics",
+          "description": "Get errors and warnings",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "maxResults": {"type": "number"}
+            }
+          }
+        }
+      }
+    ]
+  }'</pre>
                 </div>
             </div>
         </div>
@@ -1122,6 +1749,95 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             };
         });
 
+        // Wiki tab switching
+        document.querySelectorAll('.wiki-tab').forEach(function(tab) {
+            tab.onclick = function() {
+                var targetPanel = this.getAttribute('data-tab');
+                // Update active tab styling
+                document.querySelectorAll('.wiki-tab').forEach(function(t) {
+                    t.classList.remove('active');
+                    t.style.background = 'var(--vscode-button-secondaryBackground)';
+                    t.style.color = 'var(--vscode-button-secondaryForeground)';
+                });
+                this.classList.add('active');
+                this.style.background = 'var(--vscode-editor-background)';
+                this.style.color = 'var(--vscode-foreground)';
+                // Show corresponding panel
+                document.querySelectorAll('.wiki-panel').forEach(function(p) {
+                    p.style.display = 'none';
+                });
+                var panel = document.querySelector('.wiki-panel[data-panel="' + targetPanel + '"]');
+                if (panel) panel.style.display = 'block';
+            };
+            // Initialize styling
+            if (tab.classList.contains('active')) {
+                tab.style.background = 'var(--vscode-editor-background)';
+                tab.style.color = 'var(--vscode-foreground)';
+            } else {
+                tab.style.background = 'var(--vscode-button-secondaryBackground)';
+                tab.style.color = 'var(--vscode-button-secondaryForeground)';
+            }
+        });
+
+        // Prompt Generator handlers
+        document.getElementById('btn-generate-prompt').onclick = function() {
+            var projectType = document.getElementById('prompt-project-type').value;
+            var techStack = document.getElementById('prompt-tech-stack').value;
+            var goal = document.getElementById('prompt-goal').value;
+            var complexity = document.getElementById('prompt-complexity').value;
+            var context = document.getElementById('prompt-context').value;
+            
+            if (!context && !projectType && !techStack && !goal) {
+                alert('Please select at least one option or describe what you want to build.');
+                return;
+            }
+            
+            document.getElementById('prompt-output-container').style.display = 'none';
+            document.getElementById('prompt-loading').style.display = 'block';
+            
+            vscode.postMessage({
+                type: 'generatePrompt',
+                data: { projectType: projectType, techStack: techStack, goal: goal, complexity: complexity, context: context }
+            });
+        };
+        
+        document.getElementById('btn-enhance-prompt').onclick = function() {
+            var context = document.getElementById('prompt-context').value;
+            var currentOutput = document.getElementById('prompt-output').textContent;
+            
+            if (!context && !currentOutput) {
+                alert('Please enter a description or generate a prompt first.');
+                return;
+            }
+            
+            document.getElementById('prompt-loading').style.display = 'block';
+            
+            vscode.postMessage({
+                type: 'enhancePrompt',
+                data: { context: context, existingPrompt: currentOutput }
+            });
+        };
+        
+        document.getElementById('btn-copy-prompt').onclick = function() {
+            var content = document.getElementById('prompt-output').textContent;
+            navigator.clipboard.writeText(content).then(function() {
+                var btn = document.getElementById('btn-copy-prompt');
+                btn.textContent = '✓ Copied';
+                setTimeout(function() { btn.textContent = '📋 Copy'; }, 1500);
+            });
+        };
+        
+        document.getElementById('btn-export-prompt').onclick = function() {
+            var content = document.getElementById('prompt-output').textContent;
+            var blob = new Blob([content], { type: 'text/plain' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'generated-prompt.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
         // Auto-refresh Countdown Logic
         let refreshTimer = 10;
         let refreshIntervalVal = null;
@@ -1307,6 +2023,27 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 updateLogTable(message.data, message.page, message.total, message.pageSize);
             } else if (message.type === 'liveLog') {
                 appendLog(message.value);
+            } else if (message.type === 'scrollTo') {
+                // Scroll to a specific section
+                var target = message.target;
+                if (target === 'wiki') {
+                    var wikiSection = document.getElementById('wiki-section');
+                    if (wikiSection) {
+                        wikiSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                } else if (target === 'prompt-generator') {
+                    var promptSection = document.getElementById('prompt-generator-section');
+                    if (promptSection) {
+                        promptSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }
+            } else if (message.type === 'promptResult') {
+                document.getElementById('prompt-loading').style.display = 'none';
+                document.getElementById('prompt-output-container').style.display = 'block';
+                document.getElementById('prompt-output').textContent = message.data;
+            } else if (message.type === 'promptError') {
+                document.getElementById('prompt-loading').style.display = 'none';
+                alert('Error generating prompt: ' + message.error);
             }
         });
 
@@ -1489,15 +2226,55 @@ function updateStats(stats) {
             statusBadge.style.fontSize = '10px';
         }
 
-        document.getElementById('mcp-servers-count').textContent = stats.mcp.servers.length;
-        document.getElementById('mcp-servers-list').textContent = stats.mcp.servers.length > 0 ? stats.mcp.servers.join(', ') : 'None';
-        
-        document.getElementById('mcp-tools-count').textContent = stats.mcp.tools.length;
-        var toolsList = stats.mcp.tools.map(function(t) { return t.name; }).join(', ');
-        document.getElementById('mcp-tools-list').textContent = toolsList || 'None';
-        
         var toggle = document.getElementById('mcp-enabled-toggle');
         if (toggle) toggle.checked = mcpEnabled;
+
+        // Render Tools Grouped by Server
+        var contentArea = document.getElementById('mcp-content-area');
+        if (contentArea && stats.mcp.tools) {
+            if (!mcpEnabled) {
+                contentArea.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">MCP is disabled. Enable it in settings or toggle above.</div>';
+                return;
+            }
+
+            if (stats.mcp.tools.length === 0) {
+                 contentArea.innerHTML = '<div class="muted" style="text-align: center; padding: 20px;">No tools available. Connect a server or enable built-in tools.</div>';
+                 return;
+            }
+
+            // Group tools
+            var groups = {};
+            stats.mcp.tools.forEach(function(tool) {
+                if (!groups[tool.serverName]) { groups[tool.serverName] = []; }
+                groups[tool.serverName].push(tool);
+            });
+
+            var html = '<div style="display: flex; flex-direction: column; gap: 24px;">';
+            
+            Object.keys(groups).sort().forEach(function(serverName) {
+                var serverTools = groups[serverName];
+                html += '<div>';
+                html += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">';
+                html += '<span class="badge" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); font-size: 10px;">' + serverName + '</span>';
+                html += '<div style="height: 1px; flex: 1; background: var(--vscode-widget-border); opacity: 0.5;"></div>';
+                html += '</div>';
+                html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">';
+                serverTools.forEach(function(t) {
+                    html += '<div style="padding: 12px; border: 1px solid var(--vscode-widget-border); border-radius: 8px; background: rgba(0,0,0,0.02);">';
+                    html += '<div style="font-family: var(--vscode-editor-font-family); font-weight: 600; font-size: 12px; margin-bottom: 4px; color: var(--vscode-textPreformat-foreground);">' + t.name + '</div>';
+                    html += '<div style="font-size: 11px; opacity: 0.7; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;" title="' + (t.description || '') + '">' + (t.description || 'No description') + '</div>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                html += '</div>';
+            });
+
+html += '</div>';
+
+// Only update if changed to avoid flicker (hashing would be better but simple string comparison works for now)
+// Actually, innerHTML rewrite is fine for this dashboard frequency
+contentArea.innerHTML = html;
+}
     }
 }
 
@@ -1538,6 +2315,20 @@ vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
                     break;
                 case 'stopServer':
                     void this._gateway.stopServer();
+                    break;
+                case 'openSwagger': {
+                    const status = await this._gateway.getStatus();
+                    const swaggerUrl = `http://${status.config.host}:${status.config.port}/docs`;
+                    vscode.env.openExternal(vscode.Uri.parse(swaggerUrl));
+                    break;
+                }
+                case 'openWiki':
+                    // Open dashboard first, then it will scroll to wiki
+                    await CopilotPanel.createOrShow(this._extensionUri, this._gateway, 'wiki');
+                    break;
+                case 'openPromptGenerator':
+                    // Open dashboard and scroll to prompt generator
+                    await CopilotPanel.createOrShow(this._extensionUri, this._gateway, 'prompt-generator');
                     break;
             }
         });

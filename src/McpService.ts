@@ -2,10 +2,11 @@ import * as vscode from 'vscode';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { VSCodeToolProvider } from './services/VSCodeToolProvider';
 import {
     ListToolsResultSchema,
     CallToolResultSchema,
-    CompatibilityCallToolResult
+    CallToolResult
 } from '@modelcontextprotocol/sdk/types.js';
 
 export interface McpServerConfig {
@@ -26,8 +27,11 @@ export class McpService implements vscode.Disposable {
     private clients: Map<string, Client> = new Map();
     private cachedTools: McpTool[] = [];
     private disposables: vscode.Disposable[] = [];
+    private vscodeTools: VSCodeToolProvider;
 
-    constructor(private readonly output: vscode.OutputChannel) { }
+    constructor(private readonly output: vscode.OutputChannel) {
+        this.vscodeTools = new VSCodeToolProvider();
+    }
 
     public async initialize(): Promise<void> {
         await this.refreshServers();
@@ -61,6 +65,14 @@ export class McpService implements vscode.Disposable {
     }
 
     public getTools(): McpTool[] {
+        // Always include builtin tools, even if cache is empty or stale.
+        // We check if cachedTools is empty to avoid duplication if getAllTools already merged them,
+        // although getAllTools implementation below does merge them.
+        // The issue is if refreshServers() was never called or failed, cachedTools might be empty,
+        // but we still want the VSCode tools to be available.
+        if (this.cachedTools.length === 0) {
+            return this.vscodeTools.getTools();
+        }
         return this.cachedTools;
     }
 
@@ -108,15 +120,20 @@ export class McpService implements vscode.Disposable {
                 this.output.appendLine(`[MCP] Failed to list tools for server "${name}": ${error}`);
             }
         }
-        return allTools;
+        return [...allTools, ...this.vscodeTools.getTools()];
     }
 
     public async callTool(serverName: string, toolName: string, args: any): Promise<any> {
+        if (serverName === 'vscode') {
+            return this.vscodeTools.callTool(toolName, args);
+        }
+
         const client = this.clients.get(serverName);
         if (!client) {
             throw new Error(`MCP server "${serverName}" not found or not connected`);
         }
 
+        // Fix: Use CallToolResultSchema for validation, but return the result directly
         const result = await client.request(
             {
                 method: 'tools/call',

@@ -20,26 +20,63 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
 	);
 
-	// Start if enabled
+	// Status Bar & Notifications
+	const updateStatusBar = async () => {
+		const status = await gateway.getStatus();
+		if (status.running) {
+			if (status.activeRequests > 0) {
+				statusItem.text = `$(sync~spin) Copilot API: ${status.activeRequests}`;
+				statusItem.tooltip = `Processing ${status.activeRequests} active request(s)`;
+				statusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+			} else {
+				statusItem.text = '$(broadcast) Copilot API: ON';
+				statusItem.tooltip = `Listening on ${status.config.host}:${status.config.port}`;
+				statusItem.backgroundColor = undefined;
+			}
+			statusItem.show();
+		} else {
+			statusItem.text = '$(circle-slash) Copilot API: OFF';
+			statusItem.tooltip = 'Copilot API server is stopped. Click to manage.';
+			statusItem.show();
+		}
+	};
+
+	let wasRunning = false;
+	context.subscriptions.push(gateway.onDidChangeStatus(async () => {
+		await updateStatusBar();
+
+		// Notifications
+		const status = await gateway.getStatus();
+		if (status.running && !wasRunning) {
+			const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
+			if (config.get<boolean>('showNotifications', true)) {
+				const selection = await vscode.window.showInformationMessage(
+					`GitHub Copilot API Server started at http://${status.config.host}:${status.config.port}`,
+					'Open Dashboard'
+				);
+				if (selection === 'Open Dashboard') {
+					void vscode.commands.executeCommand('github-copilot-api-vscode.openDashboard');
+				}
+			}
+		}
+		wasRunning = status.running;
+	}));
+
+	// Initial State
+	void updateStatusBar();
+
+	// Auto-Start Logic
 	const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
-	const enabled = config.get('enabled', false);
-	output.appendLine(`[DEBUG] Extension activation. Config 'enabled': ${enabled}`);
+	const enabled = config.get<boolean>('enabled', false);
+	const autoStart = config.get<boolean>('autoStart', false);
 
-	if (enabled) {
-		statusItem.text = '$(broadcast) Copilot API: Starting…';
-		statusItem.tooltip = 'Manage the Copilot API gateway';
-		statusItem.show();
+	output.appendLine(`[DEBUG] Activation. Enabled: ${enabled}, AutoStart: ${autoStart}`);
 
+	if (enabled || autoStart) {
 		void gateway.start().catch(error => {
 			output.appendLine(`[${new Date().toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error)}`);
-			statusItem.text = '$(alert) Copilot API: Failed';
-			statusItem.tooltip = `Copilot API server failed to start: ${getErrorMessage(error)}`;
 			void vscode.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error)}`);
 		});
-	} else {
-		statusItem.text = '$(circle-slash) Copilot API: Stopped';
-		statusItem.tooltip = 'Copilot API server is disabled (default)';
-		statusItem.hide();
 	}
 
 	const openChatCommand = vscode.commands.registerCommand('github-copilot-api-vscode.openCopilotChat', async () => {

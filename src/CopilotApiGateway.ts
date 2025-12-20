@@ -324,7 +324,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 			uptimeMs: Date.now() - this.usageStats.startTime,
 			avgLatencyMs: this.realtimeStats.avgLatencyMs,
 			requestsPerMinute: this.realtimeStats.requestsPerMinute,
-			errorRate: this.realtimeStats.errorRate
+			errorRate: this.realtimeStats.errorRate,
+			mcp: this.getMcpStatus()
 		};
 	}
 
@@ -816,23 +817,31 @@ export class CopilotApiGateway implements vscode.Disposable {
 			const requestStart = Date.now();
 			const requestId = randomUUID().slice(0, 8);
 
-			void this.handleHttpRequest(req, res, requestId, requestStart).catch(error => {
-				const duration = Date.now() - requestStart;
-				if (error instanceof ApiError) {
-					this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', error.status, duration, {
-						error: error.message,
-						requestHeaders: req.headers
-					});
-					this.sendError(res, error);
-				} else {
-					this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', 500, duration, {
-						error: error instanceof Error ? error.message : String(error),
-						requestHeaders: req.headers
-					});
-					this.logError('Unhandled error in HTTP request handler', error);
-					this.sendError(res, new ApiError(500, 'An unexpected error occurred.', 'server_error'));
-				}
-			});
+			void this.handleHttpRequest(req, res, requestId, requestStart)
+				.catch(error => {
+					const duration = Date.now() - requestStart;
+					if (error instanceof ApiError) {
+						this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', error.status, duration, {
+							error: error.message,
+							requestHeaders: req.headers
+						});
+						this.sendError(res, error);
+					} else {
+						this.logRequest(requestId, req.method || 'UNKNOWN', req.url || '/', 500, duration, {
+							error: error instanceof Error ? error.message : String(error),
+							requestHeaders: req.headers
+						});
+						this.logError('Unhandled error in HTTP request handler', error);
+						this.sendError(res, new ApiError(500, 'An unexpected error occurred.', 'server_error'));
+					}
+				})
+				.finally(() => {
+					this.activeRequests--;
+					this._onDidChangeStatus.fire();
+				});
+
+			this.activeRequests++;
+			this._onDidChangeStatus.fire();
 		});
 
 		this.httpServer.on('error', error => {
@@ -2456,7 +2465,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		}
 	}
 
-	private async invokeCopilot(prompt: string): Promise<string> {
+	public async invokeCopilot(prompt: string): Promise<string> {
 		// Use the VS Code Language Model API to invoke Copilot programmatically
 		// This does NOT open the chat window
 		const models = await vscode.lm.selectChatModels({ vendor: 'copilot' });

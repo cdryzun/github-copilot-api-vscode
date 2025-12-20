@@ -3,7 +3,7 @@
   "displayName": "GitHub Copilot API Gateway",
   "description": "Expose GitHub Copilot as a local OpenAI-compatible API server. Use any OpenAI SDK, curl, or HTTP client to access Copilot's language models.",
   "icon": "media/icon.png",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "author": {
     "name": "Suhaib Bin Younis",
     "email": "vscode@suhaib.in",
@@ -138,6 +138,16 @@
           "type": "boolean",
           "default": true,
           "description": "Expose the WebSocket realtime endpoint at /v1/realtime."
+        },
+        "githubCopilotApi.server.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start the Copilot API server when VS Code starts."
+        },
+        "githubCopilotApi.server.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show system notifications when the server starts or stops."
         },
         "githubCopilotApi.server.port": {
           "type": "number",
