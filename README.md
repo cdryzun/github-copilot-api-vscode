@@ -112,7 +112,7 @@ Access at `http://127.0.0.1:3030/docs` when the server is running.
 
 ### Prerequisites
 
-1. **VS Code** 1.99.0 or later
+1. **VS Code** 1.95.0 or later
 2. **GitHub Copilot** extension (authenticated)
 3. **GitHub Copilot Chat** extension
 
