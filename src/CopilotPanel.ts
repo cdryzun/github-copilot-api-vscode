@@ -442,6 +442,7 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
     <div class="section">
         <div class="section-title">⚡ Actions</div>
         <button id="btn-dashboard">Open Dashboard</button>
+        <button id="btn-apps" style="background: linear-gradient(135deg, #38bdf8, #a78bfa); border: none;">📦 Open Apps Hub</button>
         <button id="btn-toggle" class="secondary">${isRunning ? '⏹ Stop Server' : '▶ Start Server'}</button>
         <button id="btn-swagger" class="secondary">📝 Swagger API</button>
         <button id="btn-metrics" class="secondary">📊 Prometheus Metrics</button>
@@ -497,6 +498,7 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         document.getElementById('btn-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
+        document.getElementById('btn-apps').addEventListener('click', () => vscode.postMessage({ type: 'openAppsHub' }));
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-metrics').addEventListener('click', () => vscode.postMessage({ type: 'openMetrics' }));
@@ -2445,6 +2447,9 @@ vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
                 case 'openPromptGenerator':
                     // Open dashboard and scroll to prompt generator
                     await CopilotPanel.createOrShow(this._extensionUri, this._gateway, 'prompt-generator');
+                    break;
+                case 'openAppsHub':
+                    void vscode.commands.executeCommand('github-copilot-api-vscode.openAppsHub');
                     break;
             }
         });

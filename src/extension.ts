@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { CopilotApiGateway, ensureCopilotChatReady, getErrorMessage, normalizePrompt } from './CopilotApiGateway';
 
 import { CopilotPanel } from './CopilotPanel';
+import { AppsPanel } from './AppsPanel';
 import { createDesktopShortcut } from './commands/createDesktopShortcut';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -20,6 +21,16 @@ export function activate(context: vscode.ExtensionContext) {
 	const provider = new CopilotPanel(context.extensionUri, gateway);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
+	);
+
+	// Initialize Apps Hub
+	AppsPanel.initialize(context);
+
+	// Register Apps Hub command
+	context.subscriptions.push(
+		vscode.commands.registerCommand('github-copilot-api-vscode.openAppsHub', () => {
+			AppsPanel.openAppsHub();
+		})
 	);
 
 	// Status Bar & Notifications

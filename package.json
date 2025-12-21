@@ -1,9 +1,9 @@
 {
   "name": "github-copilot-api-vscode",
   "displayName": "GitHub Copilot API Gateway",
-  "description": "Expose GitHub Copilot as a local OpenAI-compatible API server. Use any OpenAI SDK, curl, or HTTP client to access Copilot's language models.",
+  "description": "Transform GitHub Copilot into a full AI platform: OpenAI-compatible API server + Enterprise Apps Hub with Playwright Generator, Code Review, Commit Messages, and more.",
   "icon": "media/icon.png",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "author": {
     "name": "Suhaib Bin Younis",
     "email": "vscode@suhaib.in",
@@ -93,6 +93,11 @@
       {
         "command": "github-copilot-api-vscode.createDesktopShortcut",
         "title": "Copilot API: Create Desktop Shortcut",
+        "category": "GitHub Copilot"
+      },
+      {
+        "command": "github-copilot-api-vscode.openAppsHub",
+        "title": "Copilot Apps: Open Apps Hub",
         "category": "GitHub Copilot"
       }
     ],

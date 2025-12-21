@@ -2873,20 +2873,20 @@ var require_compile = __commonJS({
     var util_1 = require_util();
     var validate_1 = require_validate();
     var SchemaEnv = class {
-      constructor(env2) {
+      constructor(env3) {
         var _a2;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env2.schema == "object")
-          schema = env2.schema;
-        this.schema = env2.schema;
-        this.schemaId = env2.schemaId;
-        this.root = env2.root || this;
-        this.baseId = (_a2 = env2.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
-        this.schemaPath = env2.schemaPath;
-        this.localRefs = env2.localRefs;
-        this.meta = env2.meta;
+        if (typeof env3.schema == "object")
+          schema = env3.schema;
+        this.schema = env3.schema;
+        this.schemaId = env3.schemaId;
+        this.root = env3.root || this;
+        this.baseId = (_a2 = env3.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env3.schemaId || "$id"]);
+        this.schemaPath = env3.schemaPath;
+        this.localRefs = env3.localRefs;
+        this.meta = env3.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -3070,15 +3070,15 @@ var require_compile = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env2;
+      let env3;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env2 = resolveSchema.call(this, root, $ref);
+        env3 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env2.schema !== env2.root.schema)
-        return env2;
+      env3 = env3 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env3.schema !== env3.root.schema)
+        return env3;
       return void 0;
     }
   }
@@ -3226,8 +3226,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3426,8 +3426,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path4, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -4479,8 +4479,8 @@ var require_ref = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env2, validateName, opts, self: self2 } = it;
-        const { root } = env2;
+        const { baseId, schemaEnv: env3, validateName, opts, self: self2 } = it;
+        const { root } = env3;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
@@ -4490,8 +4490,8 @@ var require_ref = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env2 === root)
-            return callRef(cxt, validateName, env2, env2.$async);
+          if (env3 === root)
+            return callRef(cxt, validateName, env3, env3.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -4521,14 +4521,14 @@ var require_ref = __commonJS({
     exports2.getValidate = getValidate;
     function callRef(cxt, v, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env2, opts } = it;
+      const { allErrors, schemaEnv: env3, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env2.$async)
+        if (!env3.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -9484,20 +9484,20 @@ var require_compile2 = __commonJS({
     var util_1 = require_util2();
     var validate_1 = require_validate2();
     var SchemaEnv = class {
-      constructor(env2) {
+      constructor(env3) {
         var _a2;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env2.schema == "object")
-          schema = env2.schema;
-        this.schema = env2.schema;
-        this.schemaId = env2.schemaId;
-        this.root = env2.root || this;
-        this.baseId = (_a2 = env2.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
-        this.schemaPath = env2.schemaPath;
-        this.localRefs = env2.localRefs;
-        this.meta = env2.meta;
+        if (typeof env3.schema == "object")
+          schema = env3.schema;
+        this.schema = env3.schema;
+        this.schemaId = env3.schemaId;
+        this.root = env3.root || this;
+        this.baseId = (_a2 = env3.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env3.schemaId || "$id"]);
+        this.schemaPath = env3.schemaPath;
+        this.localRefs = env3.localRefs;
+        this.meta = env3.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -9681,15 +9681,15 @@ var require_compile2 = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env2;
+      let env3;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env2 = resolveSchema.call(this, root, $ref);
+        env3 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env2.schema !== env2.root.schema)
-        return env2;
+      env3 = env3 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env3.schema !== env3.root.schema)
+        return env3;
       return void 0;
     }
   }
@@ -10368,8 +10368,8 @@ var require_ref2 = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env2, validateName, opts, self: self2 } = it;
-        const { root } = env2;
+        const { baseId, schemaEnv: env3, validateName, opts, self: self2 } = it;
+        const { root } = env3;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
@@ -10379,8 +10379,8 @@ var require_ref2 = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env2 === root)
-            return callRef(cxt, validateName, env2, env2.$async);
+          if (env3 === root)
+            return callRef(cxt, validateName, env3, env3.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -10410,14 +10410,14 @@ var require_ref2 = __commonJS({
     exports2.getValidate = getValidate;
     function callRef(cxt, v, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env2, opts } = it;
+      const { allErrors, schemaEnv: env3, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env2.$async)
+        if (!env3.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -12466,12 +12466,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs4, exportName) {
+    function addFormats(ajv, list, fs5, exportName) {
       var _a2;
       var _b;
       (_a2 = (_b = ajv.opts.code).formats) !== null && _a2 !== void 0 ? _a2 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs4[f]);
+        ajv.addFormat(f, fs5[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -12484,8 +12484,8 @@ var require_windows = __commonJS({
   "node_modules/isexe/windows.js"(exports2, module2) {
     module2.exports = isexe;
     isexe.sync = sync;
-    var fs4 = require("fs");
-    function checkPathExt(path4, options) {
+    var fs5 = require("fs");
+    function checkPathExt(path5, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -12496,25 +12496,25 @@ var require_windows = __commonJS({
       }
       for (var i = 0; i < pathext.length; i++) {
         var p = pathext[i].toLowerCase();
-        if (p && path4.substr(-p.length).toLowerCase() === p) {
+        if (p && path5.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path4, options) {
+    function checkStat(stat, path5, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path4, options);
+      return checkPathExt(path5, options);
     }
-    function isexe(path4, options, cb) {
-      fs4.stat(path4, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path4, options));
+    function isexe(path5, options, cb) {
+      fs5.stat(path5, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path5, options));
       });
     }
-    function sync(path4, options) {
-      return checkStat(fs4.statSync(path4), path4, options);
+    function sync(path5, options) {
+      return checkStat(fs5.statSync(path5), path5, options);
     }
   }
 });
@@ -12524,14 +12524,14 @@ var require_mode = __commonJS({
   "node_modules/isexe/mode.js"(exports2, module2) {
     module2.exports = isexe;
     isexe.sync = sync;
-    var fs4 = require("fs");
-    function isexe(path4, options, cb) {
-      fs4.stat(path4, function(er, stat) {
+    var fs5 = require("fs");
+    function isexe(path5, options, cb) {
+      fs5.stat(path5, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path4, options) {
-      return checkStat(fs4.statSync(path4), options);
+    function sync(path5, options) {
+      return checkStat(fs5.statSync(path5), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -12555,7 +12555,7 @@ var require_mode = __commonJS({
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
   "node_modules/isexe/index.js"(exports2, module2) {
-    var fs4 = require("fs");
+    var fs5 = require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
@@ -12564,7 +12564,7 @@ var require_isexe = __commonJS({
     }
     module2.exports = isexe;
     isexe.sync = sync;
-    function isexe(path4, options, cb) {
+    function isexe(path5, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -12574,7 +12574,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path4, options || {}, function(er, is) {
+          isexe(path5, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -12583,7 +12583,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path4, options || {}, function(er, is) {
+      core(path5, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -12593,9 +12593,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path4, options) {
+    function sync(path5, options) {
       try {
-        return core.sync(path4, options || {});
+        return core.sync(path5, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -12611,7 +12611,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports2, module2) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path4 = require("path");
+    var path5 = require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -12649,7 +12649,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path4.join(pathPart, cmd);
+        const pCmd = path5.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i, 0));
       });
@@ -12676,7 +12676,7 @@ var require_which = __commonJS({
       for (let i = 0; i < pathEnv.length; i++) {
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path4.join(pathPart, cmd);
+        const pCmd = path5.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -12724,11 +12724,11 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports2, module2) {
     "use strict";
-    var path4 = require("path");
+    var path5 = require("path");
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
-      const env2 = parsed.options.env || process.env;
+      const env3 = parsed.options.env || process.env;
       const cwd = process.cwd();
       const hasCustomCwd = parsed.options.cwd != null;
       const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
@@ -12741,8 +12741,8 @@ var require_resolveCommand = __commonJS({
       let resolved;
       try {
         resolved = which.sync(parsed.command, {
-          path: env2[getPathKey({ env: env2 })],
-          pathExt: withoutPathExt ? path4.delimiter : void 0
+          path: env3[getPathKey({ env: env3 })],
+          pathExt: withoutPathExt ? path5.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -12751,7 +12751,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path4.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path5.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -12805,8 +12805,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path4, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path4.split("/").pop();
+      const [path5, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path5.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -12819,16 +12819,16 @@ var require_shebang_command = __commonJS({
 var require_readShebang = __commonJS({
   "node_modules/cross-spawn/lib/util/readShebang.js"(exports2, module2) {
     "use strict";
-    var fs4 = require("fs");
+    var fs5 = require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
       const buffer = Buffer.alloc(size);
       let fd;
       try {
-        fd = fs4.openSync(command, "r");
-        fs4.readSync(fd, buffer, 0, size, 0);
-        fs4.closeSync(fd);
+        fd = fs5.openSync(command, "r");
+        fs5.readSync(fd, buffer, 0, size, 0);
+        fs5.closeSync(fd);
       } catch (e) {
       }
       return shebangCommand(buffer.toString());
@@ -12841,7 +12841,7 @@ var require_readShebang = __commonJS({
 var require_parse = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports2, module2) {
     "use strict";
-    var path4 = require("path");
+    var path5 = require("path");
     var resolveCommand = require_resolveCommand();
     var escape2 = require_escape();
     var readShebang = require_readShebang();
@@ -12866,7 +12866,7 @@ var require_parse = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path4.normalize(parsed.command);
+        parsed.command = path5.normalize(parsed.command);
         parsed.command = escape2.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape2.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -18045,7 +18045,7 @@ function __classPrivateFieldIn(state, receiver) {
   if (receiver === null || typeof receiver !== "object" && typeof receiver !== "function") throw new TypeError("Cannot use 'in' operator on non-object");
   return typeof state === "function" ? receiver === state : state.has(receiver);
 }
-function __addDisposableResource(env2, value, async) {
+function __addDisposableResource(env3, value, async) {
   if (value !== null && value !== void 0) {
     if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
     var dispose, inner;
@@ -18066,22 +18066,22 @@ function __addDisposableResource(env2, value, async) {
         return Promise.reject(e);
       }
     };
-    env2.stack.push({ value, dispose, async });
+    env3.stack.push({ value, dispose, async });
   } else if (async) {
-    env2.stack.push({ async: true });
+    env3.stack.push({ async: true });
   }
   return value;
 }
-function __disposeResources(env2) {
+function __disposeResources(env3) {
   function fail(e) {
-    env2.error = env2.hasError ? new _SuppressedError(e, env2.error, "An error was suppressed during disposal.") : e;
-    env2.hasError = true;
+    env3.error = env3.hasError ? new _SuppressedError(e, env3.error, "An error was suppressed during disposal.") : e;
+    env3.hasError = true;
   }
   var r, s = 0;
   function next() {
-    while (r = env2.stack.pop()) {
+    while (r = env3.stack.pop()) {
       try {
-        if (!r.async && s === 1) return s = 0, env2.stack.push(r), Promise.resolve().then(next);
+        if (!r.async && s === 1) return s = 0, env3.stack.push(r), Promise.resolve().then(next);
         if (r.dispose) {
           var result = r.dispose.call(r.value);
           if (r.async) return s |= 2, Promise.resolve(result).then(next, function(e) {
@@ -18093,18 +18093,18 @@ function __disposeResources(env2) {
         fail(e);
       }
     }
-    if (s === 1) return env2.hasError ? Promise.reject(env2.error) : Promise.resolve();
-    if (env2.hasError) throw env2.error;
+    if (s === 1) return env3.hasError ? Promise.reject(env3.error) : Promise.resolve();
+    if (env3.hasError) throw env3.error;
   }
   return next();
 }
-function __rewriteRelativeImportExtension(path4, preserveJsx) {
-  if (typeof path4 === "string" && /^\.\.?\//.test(path4)) {
-    return path4.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
+function __rewriteRelativeImportExtension(path5, preserveJsx) {
+  if (typeof path5 === "string" && /^\.\.?\//.test(path5)) {
+    return path5.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function(m, tsx, d, ext, cm) {
       return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : d + ext + "." + cm.toLowerCase() + "js";
     });
   }
-  return path4;
+  return path5;
 }
 var extendStatics, __assign, __createBinding, __setModuleDefault, ownKeys, _SuppressedError, tslib_es6_default;
 var init_tslib_es6 = __esm({
@@ -27984,14 +27984,14 @@ var require_dependency_container = __commonJS({
           provider = providerOrConstructor;
         }
         if (providers_1.isTokenProvider(provider)) {
-          const path4 = [token];
+          const path5 = [token];
           let tokenProvider = provider;
           while (tokenProvider != null) {
             const currentToken = tokenProvider.useToken;
-            if (path4.includes(currentToken)) {
-              throw new Error(`Token registration cycle detected! ${[...path4, currentToken].join(" -> ")}`);
+            if (path5.includes(currentToken)) {
+              throw new Error(`Token registration cycle detected! ${[...path5, currentToken].join(" -> ")}`);
             }
-            path4.push(currentToken);
+            path5.push(currentToken);
             const registration = this._registry.get(currentToken);
             if (registration && providers_1.isTokenProvider(registration.provider)) {
               tokenProvider = registration.provider;
@@ -33033,7 +33033,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode7 = __toESM(require("vscode"));
+var vscode10 = __toESM(require("vscode"));
 
 // src/CopilotApiGateway.ts
 var import_crypto = require("crypto");
@@ -33614,8 +33614,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -33730,11 +33730,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -37377,10 +37377,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -37746,11 +37746,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a2;
     (_a2 = iss).path ?? (_a2.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -47076,7 +47076,7 @@ var DEFAULT_INHERITED_ENV_VARS = import_node_process.default.platform === "win32
   ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"]
 );
 function getDefaultEnvironment() {
-  const env2 = {};
+  const env3 = {};
   for (const key of DEFAULT_INHERITED_ENV_VARS) {
     const value = import_node_process.default.env[key];
     if (value === void 0) {
@@ -47085,9 +47085,9 @@ function getDefaultEnvironment() {
     if (value.startsWith("()")) {
       continue;
     }
-    env2[key] = value;
+    env3[key] = value;
   }
-  return env2;
+  return env3;
 }
 var StdioClientTransport = class {
   constructor(server) {
@@ -52177,7 +52177,7 @@ ${text} `;
       return false;
     }
   }
-  logRequest(requestId, method, path4, status, durationMs, extra) {
+  logRequest(requestId, method, path5, status, durationMs, extra) {
     const isError = status >= 400;
     const tokensIn = extra?.tokensIn ?? 0;
     const tokensOut = extra?.tokensOut ?? 0;
@@ -52186,7 +52186,7 @@ ${text} `;
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       requestId,
       method,
-      path: path4,
+      path: path5,
       status,
       durationMs,
       tokensIn: extra?.tokensIn,
@@ -52214,7 +52214,7 @@ ${text} `;
     }
     if (this.config.enableLogging) {
       const statusIcon = isError ? "\u274C" : status >= 300 ? "\u26A0\uFE0F" : "\u2705";
-      this.output.appendLine(`[${(/* @__PURE__ */ new Date()).toLocaleTimeString()}] ${statusIcon} ${method} ${path4} ${status} (${durationMs}ms)`);
+      this.output.appendLine(`[${(/* @__PURE__ */ new Date()).toLocaleTimeString()}] ${statusIcon} ${method} ${path5} ${status} (${durationMs}ms)`);
       if (extra?.error) {
         this.output.appendLine(`  Error: ${extra.error}`);
       }
@@ -52934,6 +52934,7 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
     <div class="section">
         <div class="section-title">\u26A1 Actions</div>
         <button id="btn-dashboard">Open Dashboard</button>
+        <button id="btn-apps" style="background: linear-gradient(135deg, #38bdf8, #a78bfa); border: none;">\u{1F4E6} Open Apps Hub</button>
         <button id="btn-toggle" class="secondary">${isRunning ? "\u23F9 Stop Server" : "\u25B6 Start Server"}</button>
         <button id="btn-swagger" class="secondary">\u{1F4DD} Swagger API</button>
         <button id="btn-metrics" class="secondary">\u{1F4CA} Prometheus Metrics</button>
@@ -52989,6 +52990,7 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         document.getElementById('btn-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
+        document.getElementById('btn-apps').addEventListener('click', () => vscode.postMessage({ type: 'openAppsHub' }));
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? "stopServer" : "startServer"}' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-metrics').addEventListener('click', () => vscode.postMessage({ type: 'openMetrics' }));
@@ -54926,6 +54928,9 @@ vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
         case "openPromptGenerator":
           await _CopilotPanel.createOrShow(this._extensionUri, this._gateway, "prompt-generator");
           break;
+        case "openAppsHub":
+          void vscode5.commands.executeCommand("github-copilot-api-vscode.openAppsHub");
+          break;
       }
     });
   }
@@ -54939,48 +54944,3555 @@ function getNonce() {
   return text;
 }
 
-// src/commands/createDesktopShortcut.ts
+// src/AppsPanel.ts
+var vscode8 = __toESM(require("vscode"));
+
+// src/apps/ProjectManager.ts
 var vscode6 = __toESM(require("vscode"));
-var os2 = __toESM(require("os"));
 var path3 = __toESM(require("path"));
 var fs3 = __toESM(require("fs"));
+var import_child_process = require("child_process");
+var import_util6 = require("util");
+var execAsync = (0, import_util6.promisify)(import_child_process.exec);
+var ProjectManager = class _ProjectManager {
+  static instance;
+  context;
+  constructor() {
+  }
+  /**
+   * Get singleton instance
+   */
+  static getInstance() {
+    if (!_ProjectManager.instance) {
+      _ProjectManager.instance = new _ProjectManager();
+    }
+    return _ProjectManager.instance;
+  }
+  /**
+   * Initialize with extension context
+   */
+  initialize(context) {
+    this.context = context;
+  }
+  /**
+   * Get all saved projects
+   */
+  getSavedProjects() {
+    if (!this.context) {
+      return [];
+    }
+    return this.context.globalState.get("apps.savedProjects", []);
+  }
+  /**
+   * Add a project
+   */
+  async addProject(projectPath) {
+    if (!this.context) {
+      return null;
+    }
+    if (!fs3.existsSync(projectPath) || !fs3.statSync(projectPath).isDirectory()) {
+      return null;
+    }
+    const projects = this.getSavedProjects();
+    const existing = projects.find((p) => p.path === projectPath);
+    if (existing) {
+      existing.lastUsed = Date.now();
+      await this.context.globalState.update("apps.savedProjects", projects);
+      return existing;
+    }
+    const newProject = {
+      id: `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      path: projectPath,
+      name: path3.basename(projectPath),
+      lastUsed: Date.now(),
+      favorite: false
+    };
+    projects.push(newProject);
+    await this.context.globalState.update("apps.savedProjects", projects);
+    return newProject;
+  }
+  /**
+   * Remove a project
+   */
+  async removeProject(projectId) {
+    if (!this.context) {
+      return;
+    }
+    const projects = this.getSavedProjects();
+    const filtered = projects.filter((p) => p.id !== projectId);
+    await this.context.globalState.update("apps.savedProjects", filtered);
+  }
+  /**
+   * Toggle project favorite status
+   */
+  async toggleFavorite(projectId) {
+    if (!this.context) {
+      return;
+    }
+    const projects = this.getSavedProjects();
+    const project = projects.find((p) => p.id === projectId);
+    if (project) {
+      project.favorite = !project.favorite;
+      await this.context.globalState.update("apps.savedProjects", projects);
+    }
+  }
+  /**
+   * Show folder picker dialog
+   */
+  async pickProjectFolder() {
+    const uris = await vscode6.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      title: "Select Project Folder",
+      openLabel: "Select Project"
+    });
+    if (uris && uris.length > 0) {
+      return uris[0].fsPath;
+    }
+    return void 0;
+  }
+  /**
+   * Check if a path is a git repository
+   */
+  async isGitRepository(projectPath) {
+    try {
+      await execAsync("git rev-parse --git-dir", { cwd: projectPath });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * Get git diff for a project
+   */
+  async getGitDiff(projectPath, options) {
+    try {
+      if (!await this.isGitRepository(projectPath)) {
+        return { diff: "", error: "Not a git repository" };
+      }
+      let command;
+      switch (options.type) {
+        case "staged":
+          command = "git diff --cached";
+          break;
+        case "unstaged":
+          command = "git diff";
+          break;
+        case "commits":
+          const numCommits = options.commits || 5;
+          command = `git diff HEAD~${numCommits}..HEAD`;
+          break;
+        case "branches":
+          const base = options.baseBranch || "main";
+          const target = options.targetBranch || "HEAD";
+          command = `git diff ${base}...${target}`;
+          break;
+        default:
+          command = "git diff";
+      }
+      command += " --no-color";
+      const { stdout, stderr } = await execAsync(command, {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024
+        // 10MB buffer for large diffs
+      });
+      if (stderr && !stdout) {
+        return { diff: "", error: stderr };
+      }
+      return { diff: stdout };
+    } catch (error2) {
+      const message = error2 instanceof Error ? error2.message : String(error2);
+      return { diff: "", error: message };
+    }
+  }
+  /**
+   * Get list of branches for a project
+   */
+  async getBranches(projectPath) {
+    try {
+      const { stdout } = await execAsync('git branch -a --format="%(refname:short)"', {
+        cwd: projectPath
+      });
+      return stdout.split("\n").filter((b) => b.trim()).map((b) => b.trim());
+    } catch {
+      return [];
+    }
+  }
+  /**
+   * Get current branch name
+   */
+  async getCurrentBranch(projectPath) {
+    try {
+      const { stdout } = await execAsync("git branch --show-current", {
+        cwd: projectPath
+      });
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * Get recent commits for a project
+   */
+  async getRecentCommits(projectPath, count = 10) {
+    try {
+      const { stdout } = await execAsync(
+        `git log -${count} --format="%H|%s|%an|%ad" --date=short`,
+        { cwd: projectPath }
+      );
+      return stdout.split("\n").filter((line) => line.trim()).map((line) => {
+        const [hash2, message, author, date5] = line.split("|");
+        return { hash: hash2, message, author, date: date5 };
+      });
+    } catch {
+      return [];
+    }
+  }
+  /**
+   * Get combined diff from multiple projects
+   */
+  async getCombinedDiff(projects) {
+    const results = await Promise.all(
+      projects.map(async (proj) => {
+        const result = await this.getGitDiff(proj.path, {
+          type: proj.diffType,
+          ...proj.options
+        });
+        return {
+          projectPath: proj.path,
+          ...result
+        };
+      })
+    );
+    return results;
+  }
+};
+var projectManager = ProjectManager.getInstance();
+
+// src/apps/implementations/codeReview.ts
+var codeReviewApp = {
+  id: "code-review",
+  name: "Code Review",
+  description: "Full project code review using git diff",
+  icon: "\u{1F50D}",
+  category: "developer",
+  inputs: [
+    {
+      id: "projectPaths",
+      label: "Project Folders",
+      type: "project-picker",
+      placeholder: "Add project folders to review...",
+      required: true,
+      hint: "You can add multiple projects for a combined review"
+    },
+    {
+      id: "diffType",
+      label: "What to Review",
+      type: "radio",
+      required: true,
+      defaultValue: "unstaged",
+      options: [
+        { value: "staged", label: "Staged Changes", icon: "\u{1F4E6}", description: "Changes added to git staging" },
+        { value: "unstaged", label: "Unstaged Changes", icon: "\u{1F4DD}", description: "Current working directory changes" },
+        { value: "commits", label: "Last N Commits", icon: "\u{1F4DC}", description: "Review recent commits" },
+        { value: "branches", label: "Branch Comparison", icon: "\u{1F500}", description: "Compare between branches" }
+      ]
+    },
+    {
+      id: "numCommits",
+      label: "Number of Commits",
+      type: "text",
+      defaultValue: "5",
+      placeholder: "5",
+      hint: "How many recent commits to include",
+      showIf: { field: "diffType", equals: "commits" }
+    },
+    {
+      id: "baseBranch",
+      label: "Base Branch",
+      type: "text",
+      defaultValue: "main",
+      placeholder: "main",
+      hint: "The branch to compare against",
+      showIf: { field: "diffType", equals: "branches" }
+    },
+    {
+      id: "targetBranch",
+      label: "Target Branch",
+      type: "text",
+      defaultValue: "HEAD",
+      placeholder: "HEAD or branch name",
+      hint: "The branch with your changes",
+      showIf: { field: "diffType", equals: "branches" }
+    },
+    {
+      id: "reviewFocus",
+      label: "Review Focus (optional)",
+      type: "textarea",
+      placeholder: "e.g., Focus on security vulnerabilities, performance issues, and error handling...",
+      hint: "Specific areas you want the reviewer to focus on",
+      rows: 2
+    },
+    {
+      id: "reviewType",
+      label: "Review Depth",
+      type: "select",
+      defaultValue: "thorough",
+      options: [
+        { value: "quick", label: "\u26A1 Quick Scan", description: "High-level overview, critical issues only" },
+        { value: "thorough", label: "\u{1F50D} Thorough Review", description: "Comprehensive analysis" },
+        { value: "security", label: "\u{1F512} Security Focus", description: "Deep security analysis" },
+        { value: "performance", label: "\u26A1 Performance Focus", description: "Performance and optimization" }
+      ]
+    }
+  ],
+  primaryAction: "Start Code Review",
+  systemPrompt: `You are a senior software engineer conducting a thorough, constructive code review.
+Your goal is to help improve code quality while being respectful and educational.
+
+## Review Guidelines
+
+1. **Be Constructive**: Frame feedback as suggestions, not criticisms
+2. **Explain Why**: Always explain the reason behind each suggestion
+3. **Prioritize**: Focus on issues that matter most
+4. **Be Specific**: Reference exact files and line numbers when possible
+5. **Acknowledge Good Work**: Mention well-written code too
+
+## Output Format
+
+Structure your review using these sections:
+
+### \u{1F4CB} Summary
+- Brief overview of changes reviewed
+- Overall assessment (1-2 sentences)
+
+### \u{1F534} Critical Issues (Must Fix)
+Issues that could cause bugs, security vulnerabilities, or data loss.
+Format each as:
+- **[File:Line]** Issue title
+  - What: Description of the issue
+  - Why: Why this is critical
+  - Fix: Specific recommendation
+
+### \u{1F7E1} Warnings (Should Fix)
+Issues that could cause problems or are bad practices.
+Same format as above.
+
+### \u{1F4A1} Suggestions (Nice to Have)
+Improvements for code quality, readability, or maintainability.
+Same format as above.
+
+### \u2705 What's Good
+Acknowledge well-written code, good patterns, or improvements.
+
+### \u{1F4CA} Summary Stats
+- Files changed: X
+- Critical: X | Warnings: X | Suggestions: X
+
+If the diff is empty or there are no changes, say so clearly and suggest the user check their git status.`,
+  buildUserPrompt: (inputs, context) => {
+    const parts = [];
+    if (inputs.reviewFocus) {
+      parts.push(`## Review Focus
+${inputs.reviewFocus}
+`);
+    }
+    const reviewTypeDescriptions = {
+      quick: "Perform a quick scan focusing only on critical issues and obvious bugs.",
+      thorough: "Perform a comprehensive review covering all aspects of code quality.",
+      security: "Focus heavily on security vulnerabilities, input validation, authentication, authorization, and data protection.",
+      performance: "Focus on performance issues, memory leaks, inefficient algorithms, and optimization opportunities."
+    };
+    if (inputs.reviewType && reviewTypeDescriptions[inputs.reviewType]) {
+      parts.push(`## Review Type
+${reviewTypeDescriptions[inputs.reviewType]}
+`);
+    }
+    if (context?.gitDiff) {
+      parts.push(`## Git Diff to Review
+\`\`\`diff
+${context.gitDiff}
+\`\`\``);
+    } else if (context?.errors && context.errors.length > 0) {
+      parts.push(`## Errors
+Could not retrieve git diff:
+${context.errors.join("\n")}`);
+    } else {
+      parts.push("## Note\nNo diff content available. The diff may be empty or there may be no changes to review.");
+    }
+    if (context?.projectPaths && context.projectPaths.length > 0) {
+      parts.push(`
+## Projects Reviewed
+${context.projectPaths.join("\n")}`);
+    }
+    return parts.join("\n\n");
+  },
+  fetchContext: async (inputs) => {
+    const context = {
+      projectPaths: [],
+      errors: []
+    };
+    let projectPaths = [];
+    try {
+      if (inputs.projectPaths.startsWith("[")) {
+        projectPaths = JSON.parse(inputs.projectPaths);
+      } else {
+        projectPaths = inputs.projectPaths.split(",").map((p) => p.trim()).filter(Boolean);
+      }
+    } catch {
+      projectPaths = [inputs.projectPaths];
+    }
+    if (projectPaths.length === 0) {
+      context.errors.push("No project paths provided");
+      return context;
+    }
+    context.projectPaths = projectPaths;
+    const allDiffs = [];
+    for (const projectPath of projectPaths) {
+      const diffResult = await projectManager.getGitDiff(projectPath, {
+        type: inputs.diffType,
+        commits: inputs.numCommits ? parseInt(inputs.numCommits, 10) : 5,
+        baseBranch: inputs.baseBranch || "main",
+        targetBranch: inputs.targetBranch || "HEAD"
+      });
+      if (diffResult.error) {
+        context.errors.push(`${projectPath}: ${diffResult.error}`);
+      }
+      if (diffResult.diff) {
+        allDiffs.push(`# Project: ${projectPath}
+${diffResult.diff}`);
+      }
+    }
+    context.gitDiff = allDiffs.join("\n\n---\n\n");
+    if (context.gitDiff.length > 5e4) {
+      context.gitDiff = context.gitDiff.substring(0, 5e4) + "\n\n[... diff truncated due to size. Showing first 50,000 characters ...]";
+    }
+    return context;
+  },
+  parseResponse: (response, inputs) => {
+    const sections = [];
+    const criticalMatch = response.match(/### 🔴 Critical Issues[\s\S]*?(?=###|$)/i);
+    if (criticalMatch && !criticalMatch[0].includes("None") && criticalMatch[0].length > 50) {
+      sections.push({
+        title: "\u{1F534} Critical Issues",
+        content: criticalMatch[0].replace(/### 🔴 Critical Issues[^\n]*\n/, "").trim(),
+        severity: "critical",
+        collapsible: true,
+        collapsed: false
+      });
+    }
+    const warningsMatch = response.match(/### 🟡 Warnings[\s\S]*?(?=###|$)/i);
+    if (warningsMatch && !warningsMatch[0].includes("None") && warningsMatch[0].length > 50) {
+      sections.push({
+        title: "\u{1F7E1} Warnings",
+        content: warningsMatch[0].replace(/### 🟡 Warnings[^\n]*\n/, "").trim(),
+        severity: "warning",
+        collapsible: true,
+        collapsed: false
+      });
+    }
+    const suggestionsMatch = response.match(/### 💡 Suggestions[\s\S]*?(?=###|$)/i);
+    if (suggestionsMatch && !suggestionsMatch[0].includes("None") && suggestionsMatch[0].length > 50) {
+      sections.push({
+        title: "\u{1F4A1} Suggestions",
+        content: suggestionsMatch[0].replace(/### 💡 Suggestions[^\n]*\n/, "").trim(),
+        severity: "info",
+        collapsible: true,
+        collapsed: true
+      });
+    }
+    if (sections.length === 0) {
+      return {
+        type: "markdown",
+        content: response,
+        actions: [
+          { label: "Copy Review", icon: "\u{1F4CB}", action: "copy" },
+          { label: "Save as Markdown", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md", suggestedFilename: "code-review.md" }
+        ]
+      };
+    }
+    return {
+      type: "structured",
+      content: response,
+      sections,
+      summary: `Found ${sections.filter((s) => s.severity === "critical").length} critical, ${sections.filter((s) => s.severity === "warning").length} warnings`,
+      actions: [
+        { label: "Copy Review", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Save as Markdown", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md", suggestedFilename: "code-review.md" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Copy Review", icon: "\u{1F4CB}", action: "copy" },
+    { label: "Save as Markdown", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md", suggestedFilename: "code-review.md" }
+  ],
+  requirements: {
+    git: true,
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Review staged changes",
+      inputs: {
+        diffType: "staged",
+        reviewType: "thorough",
+        reviewFocus: "Focus on security and error handling"
+      }
+    },
+    {
+      name: "Security review of recent commits",
+      inputs: {
+        diffType: "commits",
+        numCommits: "10",
+        reviewType: "security"
+      }
+    }
+  ]
+};
+
+// src/apps/implementations/testCaseGenerator.ts
+var testCaseGeneratorApp = {
+  id: "test-case-generator",
+  name: "Test Case Generator",
+  description: "Generate test cases from requirements/user stories",
+  icon: "\u{1F9EA}",
+  category: "qa",
+  inputs: [
+    {
+      id: "requirement",
+      label: "Requirement / User Story",
+      type: "textarea",
+      placeholder: `Example:
+As a user, I want to reset my password so that I can regain access to my account if I forget it.
+
+Acceptance Criteria:
+- User can request password reset via email
+- Reset link expires after 24 hours
+- Password must meet complexity requirements`,
+      required: true,
+      rows: 8,
+      hint: "Paste the user story, requirement, or feature description"
+    },
+    {
+      id: "testTypes",
+      label: "Test Types to Include",
+      type: "multi-select",
+      options: [
+        { value: "functional", label: "\u2705 Functional", description: "Happy path scenarios" },
+        { value: "edge", label: "\u{1F532} Edge Cases", description: "Boundary conditions" },
+        { value: "negative", label: "\u274C Negative", description: "Error scenarios" },
+        { value: "security", label: "\u{1F512} Security", description: "Security test cases" },
+        { value: "performance", label: "\u26A1 Performance", description: "Performance considerations" },
+        { value: "accessibility", label: "\u267F Accessibility", description: "A11y test cases" }
+      ],
+      defaultValue: "functional,edge,negative"
+    },
+    {
+      id: "outputFormat",
+      label: "Output Format",
+      type: "select",
+      required: true,
+      defaultValue: "gherkin",
+      options: [
+        { value: "gherkin", label: "\u{1F952} Gherkin (BDD)", description: "Given/When/Then format" },
+        { value: "traditional", label: "\u{1F4CB} Traditional", description: "ID, Steps, Expected Results" },
+        { value: "checklist", label: "\u2714\uFE0F Checklist", description: "Simple test checklist" },
+        { value: "xunit", label: "\u{1F9EA} xUnit Style", description: "Test method structure" }
+      ]
+    },
+    {
+      id: "priority",
+      label: "Include Priority Levels",
+      type: "checkbox",
+      defaultValue: "true"
+    },
+    {
+      id: "additionalContext",
+      label: "Additional Context (optional)",
+      type: "textarea",
+      placeholder: "Any additional technical details, constraints, or context...",
+      rows: 3
+    }
+  ],
+  primaryAction: "Generate Test Cases",
+  systemPrompt: `You are an expert QA engineer specializing in test case design.
+Generate comprehensive, actionable test cases based on the given requirements.
+
+## Guidelines
+
+1. **Coverage**: Ensure all acceptance criteria are covered
+2. **Completeness**: Each test case should be standalone and complete
+3. **Clarity**: Use clear, unambiguous language
+4. **Testability**: Each test must have a clear pass/fail criteria
+5. **Prioritization**: Order tests by importance/risk
+
+## Output Formats
+
+### Gherkin (BDD) Format
+\`\`\`gherkin
+Feature: [Feature Name]
+
+  Scenario: [Scenario Name]
+    Given [precondition]
+    When [action]
+    Then [expected result]
+    And [additional expectation]
+\`\`\`
+
+### Traditional Format
+| Test ID | Test Case | Priority | Preconditions | Steps | Expected Result |
+|---------|-----------|----------|---------------|-------|-----------------|
+
+### Checklist Format
+- [ ] [P1] Test case description
+  - Step 1
+  - Step 2
+  - \u2713 Expected: result
+
+### xUnit Style Format
+\`\`\`
+Test: testFeatureName_WhenCondition_ShouldExpectedBehavior
+Arrange: [setup]
+Act: [action]
+Assert: [verification]
+\`\`\`
+
+Always include:
+- Happy path scenarios (functional)
+- Edge cases and boundary conditions
+- Negative/error scenarios
+- Any specific test types requested`,
+  buildUserPrompt: (inputs) => {
+    const parts = [];
+    parts.push(`## Requirement to Test
+${inputs.requirement}`);
+    if (inputs.additionalContext) {
+      parts.push(`## Additional Context
+${inputs.additionalContext}`);
+    }
+    const testTypes = inputs.testTypes ? inputs.testTypes.split(",") : ["functional", "edge", "negative"];
+    const typeLabels = {
+      functional: "Functional (happy path)",
+      edge: "Edge Cases (boundaries)",
+      negative: "Negative (error scenarios)",
+      security: "Security",
+      performance: "Performance",
+      accessibility: "Accessibility"
+    };
+    const selectedTypes = testTypes.map((t) => typeLabels[t] || t).join(", ");
+    parts.push(`## Test Types Required
+${selectedTypes}`);
+    const formatLabels = {
+      gherkin: "Gherkin (BDD) - Given/When/Then format",
+      traditional: "Traditional table format with Test ID, Steps, Expected Results",
+      checklist: "Simple checklist format",
+      xunit: "xUnit test method structure (Arrange/Act/Assert)"
+    };
+    parts.push(`## Output Format
+${formatLabels[inputs.outputFormat] || inputs.outputFormat}`);
+    if (inputs.priority === "true") {
+      parts.push(`## Include Priority
+Yes - mark each test case with priority (P1=Critical, P2=High, P3=Medium, P4=Low)`);
+    }
+    parts.push(`
+Please generate comprehensive test cases covering all the requested types in the specified format.`);
+    return parts.join("\n\n");
+  },
+  parseResponse: (response, inputs) => {
+    const formatExtensions = {
+      gherkin: ".feature",
+      traditional: ".md",
+      checklist: ".md",
+      xunit: ".txt"
+    };
+    const ext = formatExtensions[inputs.outputFormat] || ".md";
+    const filename = `test-cases${ext}`;
+    return {
+      type: inputs.outputFormat === "gherkin" ? "code" : "markdown",
+      content: response,
+      language: inputs.outputFormat === "gherkin" ? "gherkin" : void 0,
+      actions: [
+        { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: ext, suggestedFilename: filename },
+        { label: "Insert at Cursor", icon: "\u{1F4DD}", action: "insert" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+    { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md" }
+  ],
+  requirements: {
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Login Feature",
+      inputs: {
+        requirement: `As a user, I want to log in with my email and password so that I can access my account.
+
+Acceptance Criteria:
+- Valid email format required
+- Password minimum 8 characters
+- Show error for invalid credentials
+- Lock account after 5 failed attempts
+- Remember me option for 30 days`,
+        testTypes: "functional,edge,negative,security",
+        outputFormat: "gherkin"
+      }
+    },
+    {
+      name: "Shopping Cart",
+      inputs: {
+        requirement: `Users can add items to cart, update quantities, and remove items. Cart persists across sessions.`,
+        testTypes: "functional,edge",
+        outputFormat: "traditional"
+      }
+    }
+  ]
+};
+
+// src/apps/implementations/bugReportWriter.ts
+var bugReportWriterApp = {
+  id: "bug-report-writer",
+  name: "Bug Report Writer",
+  description: "Create structured bug reports with repro steps",
+  icon: "\u{1F41B}",
+  category: "qa",
+  inputs: [
+    {
+      id: "whatHappened",
+      label: "What happened? (brief description)",
+      type: "textarea",
+      placeholder: "Describe the bug in a few sentences...",
+      required: true,
+      rows: 3,
+      hint: "Describe what went wrong"
+    },
+    {
+      id: "expected",
+      label: "What did you expect to happen?",
+      type: "textarea",
+      placeholder: "What should have happened instead...",
+      required: true,
+      rows: 2
+    },
+    {
+      id: "steps",
+      label: "Steps you took (optional)",
+      type: "textarea",
+      placeholder: `1. Opened the login page
+2. Entered email and password
+3. Clicked login button
+4. Nothing happened`,
+      rows: 5,
+      hint: "We'll enhance these into proper repro steps"
+    },
+    {
+      id: "url",
+      label: "URL / Page (optional)",
+      type: "text",
+      placeholder: "https://app.example.com/login"
+    },
+    {
+      id: "browser",
+      label: "Browser",
+      type: "select",
+      defaultValue: "chrome",
+      options: [
+        { value: "chrome", label: "Chrome" },
+        { value: "firefox", label: "Firefox" },
+        { value: "safari", label: "Safari" },
+        { value: "edge", label: "Edge" },
+        { value: "mobile-ios", label: "Mobile Safari (iOS)" },
+        { value: "mobile-android", label: "Chrome (Android)" },
+        { value: "other", label: "Other" }
+      ]
+    },
+    {
+      id: "os",
+      label: "Operating System",
+      type: "select",
+      defaultValue: "macos",
+      options: [
+        { value: "macos", label: "macOS" },
+        { value: "windows", label: "Windows" },
+        { value: "linux", label: "Linux" },
+        { value: "ios", label: "iOS" },
+        { value: "android", label: "Android" },
+        { value: "other", label: "Other" }
+      ]
+    },
+    {
+      id: "severity",
+      label: "Severity",
+      type: "radio",
+      defaultValue: "high",
+      options: [
+        { value: "critical", label: "\u{1F534} Critical", description: "System down, data loss, security issue" },
+        { value: "high", label: "\u{1F7E0} High", description: "Major feature broken, no workaround" },
+        { value: "medium", label: "\u{1F7E1} Medium", description: "Feature impaired, workaround exists" },
+        { value: "low", label: "\u{1F7E2} Low", description: "Minor issue, cosmetic" }
+      ]
+    },
+    {
+      id: "additionalInfo",
+      label: "Additional Information (optional)",
+      type: "textarea",
+      placeholder: "Console errors, screenshots description, account details (non-sensitive)...",
+      rows: 3
+    },
+    {
+      id: "outputFormat",
+      label: "Output Format",
+      type: "select",
+      defaultValue: "markdown",
+      options: [
+        { value: "markdown", label: "\u{1F4DD} Markdown", description: "GitHub/GitLab issues" },
+        { value: "jira", label: "\u{1F3AB} JIRA", description: "JIRA ticket format" },
+        { value: "plain", label: "\u{1F4C4} Plain Text", description: "Simple text format" }
+      ]
+    }
+  ],
+  primaryAction: "Generate Bug Report",
+  systemPrompt: `You are an expert QA engineer who writes clear, comprehensive bug reports.
+Create a well-structured bug report that developers can easily understand and act upon.
+
+## Guidelines
+
+1. **Clear Title**: Concise, descriptive title that summarizes the issue
+2. **Reproducible Steps**: Detailed, numbered steps anyone can follow
+3. **Expected vs Actual**: Clear distinction between expected and actual behavior
+4. **Environment Details**: Browser, OS, and relevant versions
+5. **Root Cause Hints**: If obvious, suggest possible causes
+6. **Attachments Note**: Mention what screenshots/logs would help
+
+## Output Formats
+
+### Markdown Format
+Use standard markdown with headers, bullet points, and code blocks.
+
+### JIRA Format
+Use JIRA wiki markup:
+- h2. for headers
+- * for bullets
+- {code} blocks
+- {color:red}text{color} for emphasis
+
+### Plain Text
+Simple structured text without markdown.
+
+## Structure
+
+1. **Title**: Bug: [Concise description]
+2. **Summary**: 1-2 sentence overview
+3. **Environment**: Browser, OS, URL
+4. **Severity**: With justification
+5. **Steps to Reproduce**: Detailed numbered steps
+6. **Expected Behavior**: What should happen
+7. **Actual Behavior**: What actually happens
+8. **Additional Notes**: Possible causes, workarounds
+9. **Attachments Needed**: What would help investigation`,
+  buildUserPrompt: (inputs) => {
+    const parts = [];
+    parts.push(`## Bug Description
+${inputs.whatHappened}`);
+    parts.push(`## Expected Behavior
+${inputs.expected}`);
+    if (inputs.steps) {
+      parts.push(`## Steps Taken (to enhance)
+${inputs.steps}`);
+    }
+    parts.push(`## Environment`);
+    parts.push(`- Browser: ${inputs.browser || "Not specified"}`);
+    parts.push(`- OS: ${inputs.os || "Not specified"}`);
+    if (inputs.url) {
+      parts.push(`- URL: ${inputs.url}`);
+    }
+    const severityLabels = {
+      critical: "Critical - System down, data loss, or security issue",
+      high: "High - Major feature broken, no workaround",
+      medium: "Medium - Feature impaired, workaround exists",
+      low: "Low - Minor issue, cosmetic"
+    };
+    parts.push(`
+## Severity
+${severityLabels[inputs.severity] || inputs.severity}`);
+    if (inputs.additionalInfo) {
+      parts.push(`## Additional Information
+${inputs.additionalInfo}`);
+    }
+    parts.push(`
+## Output Format
+${inputs.outputFormat || "markdown"}`);
+    parts.push(`
+Please generate a comprehensive, professional bug report.`);
+    return parts.join("\n");
+  },
+  parseResponse: (response, inputs) => {
+    const formatExtensions = {
+      markdown: ".md",
+      jira: ".txt",
+      plain: ".txt"
+    };
+    return {
+      type: "markdown",
+      content: response,
+      actions: [
+        { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: formatExtensions[inputs.outputFormat] || ".md", suggestedFilename: "bug-report" + (formatExtensions[inputs.outputFormat] || ".md") },
+        { label: "Insert at Cursor", icon: "\u{1F4DD}", action: "insert" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+    { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md" }
+  ],
+  requirements: {
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Login Button Issue",
+      inputs: {
+        whatHappened: "Login button does not respond when clicked after entering credentials",
+        expected: "Should redirect to dashboard after successful login",
+        steps: "1. Go to login page\n2. Enter email\n3. Enter password\n4. Click login\n5. Nothing happens",
+        browser: "chrome",
+        os: "macos",
+        severity: "critical",
+        outputFormat: "markdown"
+      }
+    }
+  ]
+};
+
+// src/apps/implementations/meetingNotesToActions.ts
+var meetingNotesToActionsApp = {
+  id: "meeting-notes-to-actions",
+  name: "Meeting Notes \u2192 Actions",
+  description: "Extract action items from meeting notes",
+  icon: "\u{1F4DD}",
+  category: "leadership",
+  inputs: [
+    {
+      id: "meetingNotes",
+      label: "Paste Meeting Notes",
+      type: "textarea",
+      placeholder: `Example:
+Sprint planning call - Dec 21
+Attendees: John, Sarah, Mike
+
+Discussed the new auth feature. John said we should use OAuth2.
+Sarah mentioned we need to update the docs by Friday.
+Mike will handle the frontend integration.
+
+We agreed to ship by next Friday. Need to check with legal about 
+the privacy policy changes. Budget approved for new tools.`,
+      required: true,
+      rows: 12,
+      hint: "Paste raw meeting notes, transcript, or summary"
+    },
+    {
+      id: "extractTypes",
+      label: "What to Extract",
+      type: "multi-select",
+      defaultValue: "actions,decisions,followups",
+      options: [
+        { value: "actions", label: "\u2705 Action Items", description: "Tasks assigned to people" },
+        { value: "decisions", label: "\u{1F4CC} Decisions", description: "Decisions that were made" },
+        { value: "followups", label: "\u{1F504} Follow-ups", description: "Items needing follow-up" },
+        { value: "questions", label: "\u2753 Open Questions", description: "Unresolved questions" },
+        { value: "risks", label: "\u26A0\uFE0F Risks", description: "Risks or concerns raised" },
+        { value: "deadlines", label: "\u{1F4C5} Deadlines", description: "Important dates mentioned" }
+      ]
+    },
+    {
+      id: "meetingTitle",
+      label: "Meeting Title (optional)",
+      type: "text",
+      placeholder: "e.g., Sprint Planning - Week 51"
+    },
+    {
+      id: "outputFormat",
+      label: "Output Format",
+      type: "select",
+      defaultValue: "markdown",
+      options: [
+        { value: "markdown", label: "\u{1F4DD} Markdown", description: "Formatted with tables and sections" },
+        { value: "slack", label: "\u{1F4AC} Slack-Ready", description: "Formatted for Slack posting" },
+        { value: "email", label: "\u{1F4E7} Email", description: "Ready to send as follow-up email" },
+        { value: "jira", label: "\u{1F3AB} JIRA Tasks", description: "Formatted as JIRA task descriptions" }
+      ]
+    },
+    {
+      id: "includeOwners",
+      label: "Identify Owners",
+      type: "checkbox",
+      defaultValue: "true",
+      hint: "Attempt to identify who is responsible for each action"
+    }
+  ],
+  primaryAction: "Extract Actions",
+  systemPrompt: `You are an expert at analyzing meeting notes and extracting actionable information.
+Your goal is to transform unstructured meeting notes into clear, organized action items.
+
+## Guidelines
+
+1. **Be Thorough**: Extract ALL action items, even implied ones
+2. **Identify Owners**: Assign owners when mentioned or implied
+3. **Add Due Dates**: Extract or infer reasonable deadlines
+4. **Capture Context**: Preserve important context for each item
+5. **Highlight Decisions**: Clearly mark decisions that were made
+6. **Flag Uncertainties**: Note when ownership or details are unclear
+
+## Output Structure
+
+### Meeting Summary
+Brief 2-3 sentence summary of the meeting.
+
+### \u{1F4CC} Decisions Made
+Numbered list of decisions with context.
+
+### \u2705 Action Items
+| Owner | Task | Due Date | Priority |
+|-------|------|----------|----------|
+Use "TBD" for unknown owners, "ASAP" or specific date for due dates.
+
+### \u{1F504} Follow-ups Required
+Items that need follow-up but aren't specific tasks.
+
+### \u2753 Open Questions
+Questions that weren't answered in the meeting.
+
+### \u26A0\uFE0F Risks & Concerns
+Any risks or concerns that were raised.
+
+### \u{1F4C5} Key Dates
+Important deadlines or milestones mentioned.
+
+## Format-Specific Instructions
+
+### Slack Format
+- Use *bold* for headers
+- Use bullet points with emojis
+- Keep it concise
+
+### Email Format
+- Professional tone
+- Include greeting and sign-off structure
+- Numbered action items
+
+### JIRA Format
+- Each action as a separate task
+- Include acceptance criteria where possible
+- Use JIRA wiki markup`,
+  buildUserPrompt: (inputs) => {
+    const parts = [];
+    if (inputs.meetingTitle) {
+      parts.push(`## Meeting: ${inputs.meetingTitle}`);
+    }
+    parts.push(`## Meeting Notes
+${inputs.meetingNotes}`);
+    const extractTypes = inputs.extractTypes ? inputs.extractTypes.split(",") : ["actions", "decisions", "followups"];
+    const typeLabels = {
+      actions: "Action Items (tasks with owners)",
+      decisions: "Decisions Made",
+      followups: "Follow-ups Required",
+      questions: "Open Questions",
+      risks: "Risks and Concerns",
+      deadlines: "Key Dates and Deadlines"
+    };
+    const selectedTypes = extractTypes.map((t) => typeLabels[t] || t);
+    parts.push(`## Extract These Items
+${selectedTypes.map((t) => `- ${t}`).join("\n")}`);
+    parts.push(`## Output Format
+${inputs.outputFormat || "markdown"}`);
+    if (inputs.includeOwners === "true") {
+      parts.push(`
+IMPORTANT: Identify and assign owners for each action item based on the notes. Use "TBD" if unclear.`);
+    }
+    parts.push(`
+Analyze the meeting notes and extract all requested information in a clear, organized format.`);
+    return parts.join("\n\n");
+  },
+  parseResponse: (response, inputs) => {
+    const sections = [];
+    const actionsMatch = response.match(/###?\s*✅?\s*Action Items[\s\S]*?(?=###|$)/i);
+    if (actionsMatch) {
+      sections.push({
+        title: "\u2705 Action Items",
+        content: actionsMatch[0].replace(/###?\s*✅?\s*Action Items[^\n]*\n/, "").trim(),
+        severity: "info",
+        collapsible: false
+      });
+    }
+    const decisionsMatch = response.match(/###?\s*📌?\s*Decisions[\s\S]*?(?=###|$)/i);
+    if (decisionsMatch) {
+      sections.push({
+        title: "\u{1F4CC} Decisions",
+        content: decisionsMatch[0].replace(/###?\s*📌?\s*Decisions[^\n]*\n/, "").trim(),
+        severity: "success",
+        collapsible: true,
+        collapsed: false
+      });
+    }
+    const followupsMatch = response.match(/###?\s*🔄?\s*Follow-ups[\s\S]*?(?=###|$)/i);
+    if (followupsMatch) {
+      sections.push({
+        title: "\u{1F504} Follow-ups",
+        content: followupsMatch[0].replace(/###?\s*🔄?\s*Follow-ups[^\n]*\n/, "").trim(),
+        severity: "warning",
+        collapsible: true,
+        collapsed: true
+      });
+    }
+    return {
+      type: sections.length > 0 ? "structured" : "markdown",
+      content: response,
+      sections: sections.length > 0 ? sections : void 0,
+      actions: [
+        { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md", suggestedFilename: "meeting-actions.md" },
+        { label: "Insert at Cursor", icon: "\u{1F4DD}", action: "insert" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+    { label: "Save as File", icon: "\u{1F4BE}", action: "newFile", fileExtension: ".md" }
+  ],
+  requirements: {
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Sprint Planning Notes",
+      inputs: {
+        meetingNotes: `Sprint planning - Week 51
+Team: John (BE), Sarah (FE), Mike (QA), Lisa (PM)
+
+Discussed Q1 priorities. Auth feature is top priority.
+John will implement OAuth2 backend by end of week.
+Sarah to update UI components, needs design specs from Lisa.
+Mike mentioned we need more test coverage.
+Lisa to check with legal about GDPR requirements.
+Deadline: Launch by Jan 15th.`,
+        extractTypes: "actions,decisions,deadlines",
+        outputFormat: "markdown",
+        includeOwners: "true"
+      }
+    }
+  ]
+};
+
+// src/apps/implementations/standupSummary.ts
+var standupSummaryApp = {
+  id: "standup-summary",
+  name: "Standup Summary",
+  description: "Format your daily standup update",
+  icon: "\u{1F4CA}",
+  category: "productivity",
+  inputs: [
+    {
+      id: "thoughts",
+      label: "What's on your mind? (stream of consciousness is fine)",
+      type: "textarea",
+      placeholder: `Just type what you're thinking, e.g.:
+
+yesterday fixed that auth bug that was blocking QA, also reviewed 3 PRs for the team. today gonna work on the payment integration, need to figure out stripe webhooks. blocked on getting API keys from finance team, sent email but no response yet. also need to sync with Sarah about the design...`,
+      required: true,
+      rows: 8,
+      hint: "Don't worry about formatting - we'll organize it for you"
+    },
+    {
+      id: "outputFormat",
+      label: "Output Format",
+      type: "select",
+      defaultValue: "slack",
+      options: [
+        { value: "slack", label: "\u{1F4AC} Slack-Ready", description: "With emojis, formatted for Slack" },
+        { value: "teams", label: "\u{1F465} Microsoft Teams", description: "Teams-compatible formatting" },
+        { value: "jira", label: "\u{1F3AB} JIRA Comment", description: "For JIRA standup notes" },
+        { value: "plain", label: "\u{1F4C4} Plain Text", description: "Simple, no formatting" },
+        { value: "email", label: "\u{1F4E7} Email", description: "Professional email format" },
+        { value: "bullet", label: "\u2022 Bullet Points", description: "Simple bullet list" }
+      ]
+    },
+    {
+      id: "includeDate",
+      label: "Include Date",
+      type: "checkbox",
+      defaultValue: "true"
+    },
+    {
+      id: "tone",
+      label: "Tone",
+      type: "select",
+      defaultValue: "professional",
+      options: [
+        { value: "casual", label: "\u{1F60E} Casual", description: "Relaxed, friendly" },
+        { value: "professional", label: "\u{1F454} Professional", description: "Clear and business-like" },
+        { value: "brief", label: "\u26A1 Ultra-Brief", description: "Minimal words, just the essentials" }
+      ]
+    },
+    {
+      id: "teamContext",
+      label: "Team/Project (optional)",
+      type: "text",
+      placeholder: "e.g., Platform Team, Project Phoenix",
+      hint: "Adds context if posting to shared channels"
+    }
+  ],
+  primaryAction: "Generate Summary",
+  systemPrompt: `You are an expert at turning informal thoughts into clear, professional standup updates.
+Transform the user's stream of consciousness into a well-organized standup summary.
+
+## Standard Standup Structure
+
+1. **Yesterday/Done** - What was completed
+2. **Today/Doing** - What's planned for today
+3. **Blockers** - Any blockers or impediments (if any)
+
+## Guidelines
+
+1. **Be Concise**: Keep each item to one line when possible
+2. **Use Action Verbs**: "Fixed", "Completed", "Working on", "Reviewing"
+3. **Highlight Impact**: Mention who benefits or why it matters
+4. **Be Specific**: Include ticket numbers, feature names, etc. if mentioned
+5. **Group Related Items**: Combine related work into single points
+6. **Blockers are Important**: Always highlight blockers clearly
+
+## Format-Specific Instructions
+
+### Slack Format
+\`\`\`
+\u{1F504} *Standup Update - [Date]*
+
+*Yesterday:*
+\u2705 [Completed item 1]
+\u2705 [Completed item 2]
+
+*Today:*
+\u{1F3AF} [Planned item 1]
+\u{1F3AF} [Planned item 2]
+
+*Blockers:*
+\u{1F6A7} [Blocker if any] (or \u2728 No blockers!)
+\`\`\`
+
+### Teams Format
+Use **bold** for headers, standard bullets.
+
+### JIRA Format
+Use h4. for headers, * for bullets.
+
+### Email Format
+Professional tone, proper greeting, signature placeholder.
+
+### Plain/Bullet
+Simple, clean formatting.
+
+## Tone Guidelines
+
+- **Casual**: Use contractions, friendly language, more emojis
+- **Professional**: Clear, business-like, minimal emojis
+- **Ultra-Brief**: Just the facts, no fluff, telegram style`,
+  buildUserPrompt: (inputs) => {
+    const parts = [];
+    parts.push(`## My Thoughts/Notes
+${inputs.thoughts}`);
+    parts.push(`## Output Format: ${inputs.outputFormat || "slack"}`);
+    parts.push(`## Tone: ${inputs.tone || "professional"}`);
+    if (inputs.includeDate === "true") {
+      const today = (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric"
+      });
+      parts.push(`## Date: ${today}`);
+    }
+    if (inputs.teamContext) {
+      parts.push(`## Context: ${inputs.teamContext}`);
+    }
+    parts.push(`
+Please transform my notes into a clean, organized standup update following the format and tone specified.`);
+    return parts.join("\n\n");
+  },
+  parseResponse: (response, inputs) => {
+    return {
+      type: "markdown",
+      content: response,
+      actions: [
+        { label: "Copy", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Insert at Cursor", icon: "\u{1F4DD}", action: "insert" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Copy", icon: "\u{1F4CB}", action: "copy" }
+  ],
+  requirements: {
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Typical Developer Day",
+      inputs: {
+        thoughts: `yesterday fixed the auth bug in the login flow, the one that was causing 500 errors. also reviewed prs from john and sarah. today going to start on the new dashboard feature, need to check requirements with PM first. might be blocked on design mocks, asked in slack but havent heard back`,
+        outputFormat: "slack",
+        tone: "professional",
+        includeDate: "true"
+      }
+    },
+    {
+      name: "Quick Update",
+      inputs: {
+        thoughts: `finished api integration, starting frontend now, no blockers`,
+        outputFormat: "bullet",
+        tone: "brief",
+        includeDate: "false"
+      }
+    }
+  ]
+};
+
+// src/apps/implementations/playwrightGenerator.ts
+var playwrightGeneratorApp = {
+  id: "playwright-generator",
+  name: "Playwright Script Generator",
+  description: "Generate automation scripts from test steps",
+  icon: "\u{1F3AD}",
+  category: "qa",
+  inputs: [
+    {
+      id: "attachedFiles",
+      label: "Attach Files (optional)",
+      type: "file-picker",
+      placeholder: "Attach Excel, DOCX, TXT, or MD files with test steps/locators",
+      hint: "Upload test scripts from Excel, Word docs, or text files. File contents will be extracted and used.",
+      rows: 0
+      // Used to store accepted extensions in hint
+    },
+    {
+      id: "testSteps",
+      label: "Test Steps",
+      type: "textarea",
+      placeholder: `Paste your test steps here, e.g.:
+
+1. Navigate to https://example.com/login
+2. Enter "testuser@email.com" in email field
+3. Enter "password123" in password field
+4. Click the Login button
+5. Verify dashboard page loads
+6. Click on Settings menu
+7. Verify Settings page title is visible`,
+      required: false,
+      // Not required if files are attached
+      rows: 10,
+      hint: "Paste test steps directly, or use the file attachment above"
+    },
+    {
+      id: "locators",
+      label: "Element Locators (optional)",
+      type: "textarea",
+      placeholder: `Provide locators if you have them:
+
+email field: #email-input
+password field: input[name="password"]
+Login button: button.login-btn
+Settings menu: [data-testid="settings-link"]`,
+      rows: 6,
+      hint: "CSS selectors, data-testid, or other locators for elements"
+    },
+    {
+      id: "requirements",
+      label: "Additional Requirements (optional)",
+      type: "textarea",
+      placeholder: `Any special requirements:
+- Wait for network idle after login
+- Handle cookie consent popup
+- Test should work for mobile viewport
+- Need to handle 2FA if prompted`,
+      rows: 4
+    },
+    {
+      id: "baseUrl",
+      label: "Base URL",
+      type: "text",
+      placeholder: "https://your-app.com",
+      hint: "The starting URL for your test"
+    },
+    {
+      id: "language",
+      label: "Programming Language",
+      type: "radio",
+      defaultValue: "typescript",
+      options: [
+        { value: "typescript", label: "\u{1F537} TypeScript", description: "Recommended - Type safety & better IDE support" },
+        { value: "javascript", label: "\u{1F7E8} JavaScript", description: "Simple and widely used" },
+        { value: "python", label: "\u{1F40D} Python", description: "Great for data-driven testing" }
+      ]
+    },
+    {
+      id: "browser",
+      label: "Browser",
+      type: "select",
+      defaultValue: "chrome",
+      options: [
+        { value: "chrome", label: "\u{1F310} Google Chrome" },
+        { value: "msedge", label: "\u{1F537} Microsoft Edge" }
+      ]
+    },
+    {
+      id: "headless",
+      label: "Run Mode",
+      type: "radio",
+      defaultValue: "headed",
+      options: [
+        { value: "headed", label: "\u{1F441}\uFE0F Headed (Visible browser)", description: "Watch the test run" },
+        { value: "headless", label: "\u26A1 Headless (No UI)", description: "Faster, for CI/CD" }
+      ]
+    },
+    {
+      id: "features",
+      label: "Additional Features",
+      type: "multi-select",
+      defaultValue: "screenshots,report,retry",
+      options: [
+        { value: "screenshots", label: "\u{1F4F8} Screenshots per step", description: "Capture screenshot after each action" },
+        { value: "video", label: "\u{1F3A5} Video recording", description: "Record full test execution" },
+        { value: "report", label: "\u{1F4CA} HTML Report", description: "Generate visual test report" },
+        { value: "retry", label: "\u{1F504} Auto-retry on failure", description: "Retry failed tests automatically" },
+        { value: "trace", label: "\u{1F50D} Trace on failure", description: "Capture trace for debugging" },
+        { value: "parallel", label: "\u26A1 Parallel execution", description: "Run tests in parallel" }
+      ]
+    },
+    {
+      id: "testName",
+      label: "Test Name",
+      type: "text",
+      placeholder: "Login Flow Test",
+      defaultValue: "Automated Test",
+      hint: "Name for your test suite (also used as folder name)"
+    },
+    {
+      id: "targetFolder",
+      label: "Target Folder",
+      type: "project-picker",
+      required: true,
+      placeholder: "Select where to create the test project",
+      hint: "A folder named after your test will be created here with all files"
+    },
+    {
+      id: "model",
+      label: "AI Model",
+      type: "model-picker",
+      defaultValue: "auto",
+      hint: "Select which AI model to use for generating the script"
+    }
+  ],
+  primaryAction: "Generate & Create Project",
+  systemPrompt: `You are an expert Playwright automation engineer. Generate production-ready, enterprise-grade Playwright test scripts.
+
+## Guidelines
+
+1. **Robust Locators**: Use resilient selectors (data-testid > role > text > css)
+2. **Proper Waits**: Use auto-waiting, avoid hardcoded delays
+3. **Error Handling**: Include try-catch for critical steps
+4. **Screenshots**: Capture screenshots at key points for debugging
+5. **Assertions**: Add meaningful assertions after each significant action
+6. **Comments**: Add clear comments explaining each step
+7. **Best Practices**: Follow Playwright best practices
+
+## Output Structure
+
+Generate the script in THREE sections:
+
+### SECTION 1: SETUP FILES
+First, provide package.json and config files needed.
+
+### SECTION 2: MAIN TEST FILE
+The complete test script with:
+- Proper imports
+- Test setup/teardown
+- Step-by-step actions with comments
+- Screenshots after key steps
+- Assertions to verify behavior
+- Error handling
+
+### SECTION 3: COMMANDS
+Provide exact terminal commands to:
+1. Install dependencies
+2. Run the test
+3. View the report
+
+## Code Quality Requirements
+
+- No syntax errors
+- Proper async/await usage
+- Type safety (for TypeScript)
+- Descriptive variable names
+- Modular helper functions where appropriate
+
+## Screenshot Convention
+
+For each step, capture screenshot with descriptive name:
+await page.screenshot({ path: 'screenshots/01-login-page.png' });
+await page.screenshot({ path: 'screenshots/02-after-credentials.png' });
+
+## Report Configuration
+
+Include HTML reporter configuration for visual reports.`,
+  buildUserPrompt: (inputs) => {
+    const parts = [];
+    parts.push(`## Configuration`);
+    parts.push(`- **Language**: ${inputs.language || "typescript"}`);
+    parts.push(`- **Browser**: ${inputs.browser || "chrome"}`);
+    parts.push(`- **Mode**: ${inputs.headless === "headless" ? "Headless" : "Headed"}`);
+    const features = (inputs.features || "screenshots,report").split(",");
+    parts.push(`- **Features**: ${features.join(", ")}`);
+    if (inputs.testName) {
+      parts.push(`- **Test Name**: ${inputs.testName}`);
+    }
+    if (inputs.baseUrl) {
+      parts.push(`- **Base URL**: ${inputs.baseUrl}`);
+    }
+    if (inputs.attachedFiles && inputs.attachedFiles.trim() && inputs.attachedFiles !== "[]") {
+      try {
+        const files = JSON.parse(inputs.attachedFiles);
+        if (files.length > 0) {
+          parts.push(`
+## Attached Files`);
+          for (const file2 of files) {
+            parts.push(`
+### File: ${file2.name}`);
+            parts.push("```");
+            parts.push(file2.content);
+            parts.push("```");
+          }
+        }
+      } catch {
+      }
+    }
+    if (inputs.testSteps && inputs.testSteps.trim()) {
+      parts.push(`
+## Test Steps to Automate
+${inputs.testSteps}`);
+    }
+    if (inputs.locators && inputs.locators.trim()) {
+      parts.push(`
+## Element Locators Provided
+${inputs.locators}`);
+    } else {
+      parts.push(`
+## Locators
+No specific locators provided. Please use best practices to identify elements (prefer data-testid, role, text, then CSS selectors).`);
+    }
+    if (inputs.requirements && inputs.requirements.trim()) {
+      parts.push(`
+## Additional Requirements
+${inputs.requirements}`);
+    }
+    parts.push(`
+## Instructions
+Generate a complete, ready-to-run Playwright test script. Include:
+1. All necessary setup files (package.json, playwright.config)
+2. The main test file with proper structure
+3. Exact commands to install and run
+
+Make sure the code has NO ERRORS and follows best practices.`);
+    return parts.join("\n");
+  },
+  parseResponse: (response, inputs) => {
+    const language = inputs.language || "typescript";
+    const fileExtensions = {
+      typescript: ".ts",
+      javascript: ".js",
+      python: ".py"
+    };
+    const sections = [];
+    const setupMatch = response.match(/###?\s*(?:SECTION 1|SETUP|Setup Files)[\s\S]*?(?=###?\s*(?:SECTION 2|MAIN|Main Test)|$)/i);
+    if (setupMatch) {
+      sections.push({
+        title: "\u{1F4E6} Setup Files",
+        content: setupMatch[0].replace(/###?\s*(?:SECTION 1|SETUP|Setup Files)[^\n]*\n/i, "").trim(),
+        severity: "info",
+        collapsible: true,
+        collapsed: false
+      });
+    }
+    const mainMatch = response.match(/###?\s*(?:SECTION 2|MAIN|Main Test)[\s\S]*?(?=###?\s*(?:SECTION 3|COMMANDS|Commands)|$)/i);
+    if (mainMatch) {
+      sections.push({
+        title: "\u{1F3AD} Main Test File",
+        content: mainMatch[0].replace(/###?\s*(?:SECTION 2|MAIN|Main Test)[^\n]*\n/i, "").trim(),
+        severity: "success",
+        collapsible: false
+      });
+    }
+    const commandsMatch = response.match(/###?\s*(?:SECTION 3|COMMANDS|Commands)[\s\S]*/i);
+    if (commandsMatch) {
+      sections.push({
+        title: "\u{1F4BB} Run Commands",
+        content: commandsMatch[0].replace(/###?\s*(?:SECTION 3|COMMANDS|Commands)[^\n]*\n/i, "").trim(),
+        severity: "info",
+        collapsible: true,
+        collapsed: false,
+        actions: [
+          { label: "Copy Commands", icon: "\u{1F4CB}", action: "copy" }
+        ]
+      });
+    }
+    const codeBlockMatch = response.match(/```(?:typescript|javascript|python|ts|js|py)\n([\s\S]*?)\n```/);
+    const mainCode = codeBlockMatch ? codeBlockMatch[1] : "";
+    const testFileName = `test${fileExtensions[language]}`;
+    return {
+      type: sections.length > 0 ? "structured" : "markdown",
+      content: response,
+      sections: sections.length > 0 ? sections : void 0,
+      summary: `Generated ${language.toUpperCase()} Playwright script`,
+      actions: [
+        {
+          label: `Download ${testFileName}`,
+          icon: "\u2B07\uFE0F",
+          action: "newFile",
+          fileExtension: fileExtensions[language],
+          suggestedFilename: testFileName,
+          data: mainCode || response
+        },
+        { label: "Copy All", icon: "\u{1F4CB}", action: "copy" },
+        { label: "Insert at Cursor", icon: "\u{1F4DD}", action: "insert" }
+      ]
+    };
+  },
+  defaultActions: [
+    { label: "Download Script", icon: "\u2B07\uFE0F", action: "newFile", fileExtension: ".ts" },
+    { label: "Copy", icon: "\u{1F4CB}", action: "copy" }
+  ],
+  requirements: {
+    copilot: true
+  },
+  examples: [
+    {
+      name: "Login Flow Test",
+      inputs: {
+        testSteps: `1. Navigate to https://example.com/login
+2. Enter "testuser@email.com" in the email field
+3. Enter "password123" in the password field
+4. Click the Login button
+5. Verify the dashboard page loads successfully
+6. Check that the welcome message shows the username`,
+        locators: `email field: #email
+password field: #password
+Login button: button[type="submit"]
+welcome message: .welcome-text`,
+        language: "typescript",
+        browser: "chromium",
+        headless: "headed",
+        features: "screenshots,report,retry",
+        testName: "Login Flow Test"
+      }
+    },
+    {
+      name: "E-commerce Checkout",
+      inputs: {
+        testSteps: `1. Go to the product page
+2. Select size "Medium"
+3. Click Add to Cart
+4. Go to Cart
+5. Click Checkout
+6. Fill shipping details
+7. Select payment method
+8. Complete purchase
+9. Verify order confirmation`,
+        language: "python",
+        browser: "all",
+        features: "screenshots,video,report",
+        testName: "Checkout Flow Test"
+      }
+    }
+  ]
+};
+
+// src/apps/registry.ts
+var appRegistry = [
+  codeReviewApp,
+  testCaseGeneratorApp,
+  bugReportWriterApp,
+  meetingNotesToActionsApp,
+  standupSummaryApp,
+  playwrightGeneratorApp
+];
+function getAppById(id) {
+  return appRegistry.find((app) => app.id === id);
+}
+function getAppsGroupedByCategory() {
+  const grouped = {
+    developer: [],
+    qa: [],
+    leadership: [],
+    productivity: []
+  };
+  for (const app of appRegistry) {
+    grouped[app.category].push(app);
+  }
+  return grouped;
+}
+var categoryMetadata = {
+  developer: {
+    label: "Developer",
+    icon: "\u{1F468}\u200D\u{1F4BB}",
+    description: "Tools for software developers"
+  },
+  qa: {
+    label: "QA & Testing",
+    icon: "\u{1F9EA}",
+    description: "Tools for quality assurance"
+  },
+  leadership: {
+    label: "Leadership",
+    icon: "\u{1F4CA}",
+    description: "Tools for tech leads and managers"
+  },
+  productivity: {
+    label: "Productivity",
+    icon: "\u26A1",
+    description: "General productivity tools"
+  }
+};
+
+// src/apps/AppService.ts
+var vscode7 = __toESM(require("vscode"));
+var AppService = class _AppService {
+  static instance;
+  constructor() {
+  }
+  /**
+   * Get singleton instance
+   */
+  static getInstance() {
+    if (!_AppService.instance) {
+      _AppService.instance = new _AppService();
+    }
+    return _AppService.instance;
+  }
+  /**
+   * Check if Copilot is available and ready
+   */
+  async checkCopilotAvailability() {
+    try {
+      const models = await vscode7.lm.selectChatModels({ vendor: "copilot" });
+      if (!models || models.length === 0) {
+        return {
+          available: false,
+          message: "GitHub Copilot is not available. Please ensure GitHub Copilot and Copilot Chat extensions are installed and you are signed in."
+        };
+      }
+      return { available: true };
+    } catch (error2) {
+      return {
+        available: false,
+        message: `Failed to access Copilot: ${error2 instanceof Error ? error2.message : String(error2)}`
+      };
+    }
+  }
+  /**
+   * Execute an app with the given inputs
+   */
+  async executeApp(app, inputs, onProgress, cancellationToken) {
+    const startTime = Date.now();
+    try {
+      const availability = await this.checkCopilotAvailability();
+      if (!availability.available) {
+        return {
+          success: false,
+          error: availability.message,
+          durationMs: Date.now() - startTime
+        };
+      }
+      let context;
+      if (app.fetchContext) {
+        onProgress?.("Gathering context...");
+        try {
+          context = await app.fetchContext(inputs);
+          if (context.errors && context.errors.length > 0) {
+            console.warn("[AppService] Context fetch warnings:", context.errors);
+          }
+        } catch (error2) {
+          return {
+            success: false,
+            error: `Failed to gather context: ${error2 instanceof Error ? error2.message : String(error2)}`,
+            durationMs: Date.now() - startTime
+          };
+        }
+      }
+      onProgress?.("Building prompt...");
+      const userPrompt = app.buildUserPrompt(inputs, context);
+      onProgress?.("Analyzing with AI...");
+      const response = await this.invokeLLM(
+        app.systemPrompt,
+        userPrompt,
+        cancellationToken
+      );
+      if (!response.success) {
+        return {
+          success: false,
+          error: response.error,
+          durationMs: Date.now() - startTime,
+          tokens: response.tokens
+        };
+      }
+      onProgress?.("Formatting output...");
+      let output;
+      if (app.parseResponse) {
+        output = app.parseResponse(response.content, inputs);
+      } else {
+        output = {
+          type: "markdown",
+          content: response.content,
+          actions: app.defaultActions || this.getDefaultActions()
+        };
+      }
+      return {
+        success: true,
+        output,
+        durationMs: Date.now() - startTime,
+        tokens: response.tokens
+      };
+    } catch (error2) {
+      return {
+        success: false,
+        error: error2 instanceof Error ? error2.message : String(error2),
+        durationMs: Date.now() - startTime
+      };
+    }
+  }
+  /**
+   * Invoke the LLM with system and user prompts
+   */
+  async invokeLLM(systemPrompt, userPrompt, cancellationToken) {
+    try {
+      const models = await vscode7.lm.selectChatModels({ vendor: "copilot" });
+      if (!models || models.length === 0) {
+        return {
+          success: false,
+          error: "No Copilot language model available"
+        };
+      }
+      const model = models[0];
+      const messages = [
+        vscode7.LanguageModelChatMessage.User(`[System Instructions]
+${systemPrompt}`),
+        vscode7.LanguageModelChatMessage.User(userPrompt)
+      ];
+      const cts = cancellationToken ? { token: cancellationToken, dispose: () => {
+      } } : new vscode7.CancellationTokenSource();
+      const timeoutId = setTimeout(() => {
+        if ("cancel" in cts) {
+          cts.cancel();
+        }
+      }, 18e4);
+      try {
+        const response = await model.sendRequest(messages, {}, cts.token);
+        let content = "";
+        for await (const fragment of response.text) {
+          if (cts.token.isCancellationRequested) {
+            return {
+              success: false,
+              error: "Request was cancelled"
+            };
+          }
+          content += fragment;
+        }
+        let inputTokens = 0;
+        let outputTokens = 0;
+        try {
+          inputTokens = await model.countTokens(systemPrompt + userPrompt);
+          outputTokens = await model.countTokens(content);
+        } catch {
+        }
+        return {
+          success: true,
+          content: content.trim(),
+          tokens: { input: inputTokens, output: outputTokens }
+        };
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancellationToken) {
+          cts.dispose();
+        }
+      }
+    } catch (error2) {
+      if (error2 instanceof vscode7.CancellationError) {
+        return {
+          success: false,
+          error: "Request was cancelled"
+        };
+      }
+      return {
+        success: false,
+        error: error2 instanceof Error ? error2.message : String(error2)
+      };
+    }
+  }
+  /**
+   * Get default output actions
+   */
+  getDefaultActions() {
+    return [
+      {
+        label: "Copy",
+        icon: "\u{1F4CB}",
+        action: "copy"
+      },
+      {
+        label: "Insert at Cursor",
+        icon: "\u{1F4DD}",
+        action: "insert"
+      },
+      {
+        label: "Save as File",
+        icon: "\u{1F4BE}",
+        action: "newFile",
+        fileExtension: ".md"
+      }
+    ];
+  }
+  /**
+   * Stream app execution (for real-time output)
+   */
+  async *executeAppStreaming(app, inputs, cancellationToken) {
+    const startTime = Date.now();
+    try {
+      const availability = await this.checkCopilotAvailability();
+      if (!availability.available) {
+        yield { type: "error", data: availability.message };
+        return;
+      }
+      let context;
+      if (app.fetchContext) {
+        yield { type: "progress", data: "Gathering context..." };
+        context = await app.fetchContext(inputs);
+      }
+      yield { type: "progress", data: "Building prompt..." };
+      const userPrompt = app.buildUserPrompt(inputs, context);
+      const models = await vscode7.lm.selectChatModels({ vendor: "copilot" });
+      if (!models || models.length === 0) {
+        yield { type: "error", data: "No Copilot model available" };
+        return;
+      }
+      const model = models[0];
+      const messages = [
+        vscode7.LanguageModelChatMessage.User(`[System Instructions]
+${app.systemPrompt}`),
+        vscode7.LanguageModelChatMessage.User(userPrompt)
+      ];
+      yield { type: "progress", data: "Analyzing..." };
+      const cts = cancellationToken ? { token: cancellationToken } : new vscode7.CancellationTokenSource();
+      const response = await model.sendRequest(messages, {}, cts.token);
+      for await (const fragment of response.text) {
+        if (cts.token.isCancellationRequested) {
+          yield { type: "error", data: "Cancelled" };
+          return;
+        }
+        yield { type: "chunk", data: fragment };
+      }
+      yield { type: "done", data: `Completed in ${Date.now() - startTime}ms` };
+    } catch (error2) {
+      yield {
+        type: "error",
+        data: error2 instanceof Error ? error2.message : String(error2)
+      };
+    }
+  }
+};
+var appService = AppService.getInstance();
+
+// src/AppsPanel.ts
+var AppsPanel = class _AppsPanel {
+  static hubPanel;
+  static appPanels = /* @__PURE__ */ new Map();
+  static context;
+  /**
+   * Initialize the Apps Panel manager
+   */
+  static initialize(context) {
+    _AppsPanel.context = context;
+    projectManager.initialize(context);
+  }
+  /**
+   * Open the Apps Hub tab
+   */
+  static openAppsHub() {
+    const column = vscode8.window.activeTextEditor?.viewColumn ?? vscode8.ViewColumn.One;
+    if (_AppsPanel.hubPanel) {
+      _AppsPanel.hubPanel.reveal(column);
+      return;
+    }
+    const panel = vscode8.window.createWebviewPanel(
+      "copilotAppsHub",
+      "\u{1F4E6} Copilot Apps",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true
+      }
+    );
+    _AppsPanel.hubPanel = panel;
+    panel.webview.html = _AppsPanel.getHubHtml(panel.webview);
+    panel.webview.onDidReceiveMessage(async (message) => {
+      switch (message.type) {
+        case "openApp":
+          _AppsPanel.openApp(message.appId);
+          break;
+        case "toggleFavorite":
+          await _AppsPanel.toggleFavorite(message.appId);
+          if (_AppsPanel.hubPanel) {
+            _AppsPanel.hubPanel.webview.html = _AppsPanel.getHubHtml(_AppsPanel.hubPanel.webview);
+          }
+          break;
+      }
+    });
+    panel.onDidDispose(() => {
+      _AppsPanel.hubPanel = void 0;
+    });
+  }
+  /**
+   * Open a specific app in its own tab
+   */
+  static openApp(appId) {
+    const app = getAppById(appId);
+    if (!app) {
+      vscode8.window.showErrorMessage(`App "${appId}" not found`);
+      return;
+    }
+    const column = vscode8.window.activeTextEditor?.viewColumn ?? vscode8.ViewColumn.One;
+    const existingPanel = _AppsPanel.appPanels.get(appId);
+    if (existingPanel) {
+      existingPanel.reveal(column);
+      return;
+    }
+    const panel = vscode8.window.createWebviewPanel(
+      `copilotApp-${appId}`,
+      `${app.icon} ${app.name}`,
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true
+      }
+    );
+    _AppsPanel.appPanels.set(appId, panel);
+    const savedProjects = projectManager.getSavedProjects();
+    panel.webview.html = _AppsPanel.getAppHtml(panel.webview, app, savedProjects);
+    panel.webview.onDidReceiveMessage(async (message) => {
+      await _AppsPanel.handleAppMessage(message, app, panel);
+    });
+    panel.onDidDispose(() => {
+      _AppsPanel.appPanels.delete(appId);
+    });
+    _AppsPanel.addRecentApp(appId);
+  }
+  /**
+   * Handle messages from app panel
+   */
+  static async handleAppMessage(message, app, panel) {
+    switch (message.type) {
+      case "executeApp":
+        panel.webview.postMessage({ type: "processingStart" });
+        try {
+          const result = await appService.executeApp(
+            app,
+            message.inputs,
+            (progress) => {
+              panel.webview.postMessage({ type: "progress", message: progress });
+            }
+          );
+          panel.webview.postMessage({ type: "result", result });
+        } catch (error2) {
+          panel.webview.postMessage({
+            type: "result",
+            result: {
+              success: false,
+              error: error2 instanceof Error ? error2.message : String(error2),
+              durationMs: 0
+            }
+          });
+        }
+        break;
+      case "pickProjectFolder":
+        const folderPath = await projectManager.pickProjectFolder();
+        if (folderPath) {
+          await projectManager.addProject(folderPath);
+          panel.webview.postMessage({
+            type: "projectAdded",
+            project: { path: folderPath, name: folderPath.split("/").pop() }
+          });
+        }
+        break;
+      case "copyToClipboard":
+        await vscode8.env.clipboard.writeText(message.value);
+        vscode8.window.showInformationMessage("Copied to clipboard!");
+        break;
+      case "insertAtCursor":
+        const editor = vscode8.window.activeTextEditor;
+        if (editor) {
+          await editor.edit((builder) => {
+            builder.insert(editor.selection.active, message.value);
+          });
+          vscode8.window.showInformationMessage("Inserted at cursor!");
+        }
+        break;
+      case "saveAsFile":
+        const uri = await vscode8.window.showSaveDialog({
+          defaultUri: vscode8.Uri.file(message.filename),
+          filters: { "All Files": ["*"] }
+        });
+        if (uri) {
+          await vscode8.workspace.fs.writeFile(uri, Buffer.from(message.content, "utf-8"));
+          vscode8.window.showInformationMessage(`Saved to ${uri.fsPath}`);
+          const doc = await vscode8.workspace.openTextDocument(uri);
+          await vscode8.window.showTextDocument(doc);
+        }
+        break;
+      case "downloadPlaywrightProject":
+        const projectUri = await vscode8.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          title: "Select folder to save Playwright project",
+          openLabel: "Save Project Here"
+        });
+        if (projectUri && projectUri[0]) {
+          try {
+            const projectPath = projectUri[0];
+            const files = message.files;
+            for (const file2 of files) {
+              const fileUri = vscode8.Uri.joinPath(projectPath, file2.name);
+              await vscode8.workspace.fs.writeFile(fileUri, Buffer.from(file2.content, "utf-8"));
+            }
+            vscode8.window.showInformationMessage(`Playwright project saved to ${projectPath.fsPath}`);
+            await vscode8.commands.executeCommand("vscode.openFolder", projectPath, { forceNewWindow: false });
+          } catch (error2) {
+            vscode8.window.showErrorMessage(`Failed to save project: ${error2 instanceof Error ? error2.message : String(error2)}`);
+          }
+        }
+        break;
+      case "runTerminalCommand":
+        const terminal = vscode8.window.createTerminal({
+          name: `${message.name || "Playwright Test"}`,
+          cwd: message.cwd
+        });
+        terminal.show();
+        terminal.sendText(message.command);
+        break;
+      case "pickFiles":
+        const fileUris = await vscode8.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: true,
+          filters: {
+            "Test Documents": ["xlsx", "xls", "docx", "doc", "txt", "md"],
+            "Excel Files": ["xlsx", "xls"],
+            "Word Documents": ["docx", "doc"],
+            "Text Files": ["txt", "md"]
+          },
+          title: "Select files with test steps or locators"
+        });
+        if (fileUris && fileUris.length > 0) {
+          const files = [];
+          for (const fileUri of fileUris) {
+            const fileName = fileUri.fsPath.split("/").pop() || "";
+            const ext = fileName.split(".").pop()?.toLowerCase() || "";
+            try {
+              let content = "";
+              if (ext === "txt" || ext === "md") {
+                const bytes = await vscode8.workspace.fs.readFile(fileUri);
+                content = Buffer.from(bytes).toString("utf-8");
+              } else if (ext === "xlsx" || ext === "xls") {
+                const bytes = await vscode8.workspace.fs.readFile(fileUri);
+                content = `[Excel File: ${fileName}]
+Note: Excel file attached. The content will be processed.
+Base64 preview (first 500 chars): ${Buffer.from(bytes).toString("base64").slice(0, 500)}...`;
+              } else if (ext === "docx" || ext === "doc") {
+                const bytes = await vscode8.workspace.fs.readFile(fileUri);
+                content = `[Word Document: ${fileName}]
+Note: Word document attached. The content will be processed.
+Size: ${bytes.length} bytes`;
+              }
+              files.push({ name: fileName, content, type: ext });
+            } catch (error2) {
+              vscode8.window.showWarningMessage(`Could not read file: ${fileName}`);
+            }
+          }
+          if (files.length > 0) {
+            panel.webview.postMessage({
+              type: "filesReceived",
+              fieldId: message.fieldId,
+              files
+            });
+          }
+        }
+        break;
+      case "getAvailableModels":
+        try {
+          const allModels = await vscode8.lm.selectChatModels({});
+          const modelList = allModels.map((m) => ({
+            id: m.id,
+            name: m.name,
+            vendor: m.vendor,
+            family: m.family
+          }));
+          panel.webview.postMessage({
+            type: "modelsReceived",
+            fieldId: message.fieldId,
+            models: modelList
+          });
+        } catch (error2) {
+          vscode8.window.showWarningMessage("Could not fetch available models");
+        }
+        break;
+      case "extractAndCreateProject":
+        try {
+          const rawContent = message.rawContent;
+          const language = message.language || "typescript";
+          const extractedFiles = [];
+          const extMap = {
+            typescript: "ts",
+            javascript: "js",
+            python: "py"
+          };
+          const ext = extMap[language] || "ts";
+          const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+          let match;
+          const foundBlocks = [];
+          while ((match = codeBlockRegex.exec(rawContent)) !== null) {
+            const lang = (match[1] || "").toLowerCase();
+            const code = match[2].trim();
+            if (code.length > 20) {
+              foundBlocks.push({ lang, code });
+            }
+          }
+          for (const block of foundBlocks) {
+            if (block.lang === "json" && block.code.includes('"name"') && block.code.includes('"devDependencies"')) {
+              extractedFiles.push({ name: "package.json", content: block.code });
+            } else if ((block.lang === "typescript" || block.lang === "ts" || block.lang === "javascript" || block.lang === "js") && block.code.includes("defineConfig")) {
+              extractedFiles.push({ name: `playwright.config.${ext}`, content: block.code });
+            } else if ((block.lang === "typescript" || block.lang === "ts" || block.lang === "javascript" || block.lang === "js" || block.lang === "python" || block.lang === "py") && (block.code.includes("test(") || block.code.includes("def test_"))) {
+              const testFileName = language === "python" ? "tests/test_spec.py" : `tests/test.spec.${ext}`;
+              extractedFiles.push({ name: testFileName, content: block.code });
+            }
+          }
+          if (extractedFiles.length > 0) {
+            const targetPath = message.targetFolder;
+            const testName = message.testName || "playwright-test";
+            const safeName = testName.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
+            const projectFolderUri = vscode8.Uri.file(`${targetPath}/${safeName}`);
+            await vscode8.workspace.fs.createDirectory(projectFolderUri);
+            for (const file2 of extractedFiles) {
+              const fileUri = vscode8.Uri.joinPath(projectFolderUri, file2.name);
+              const dirPath = file2.name.split("/").slice(0, -1).join("/");
+              if (dirPath) {
+                await vscode8.workspace.fs.createDirectory(vscode8.Uri.joinPath(projectFolderUri, dirPath));
+              }
+              await vscode8.workspace.fs.writeFile(fileUri, Buffer.from(file2.content, "utf-8"));
+            }
+            vscode8.window.showInformationMessage(
+              `\u2705 Created ${extractedFiles.length} files in: ${safeName}`,
+              "Open Folder",
+              "Run npm install"
+            ).then((selection) => {
+              if (selection === "Open Folder") {
+                vscode8.commands.executeCommand("vscode.openFolder", projectFolderUri);
+              } else if (selection === "Run npm install") {
+                const term = vscode8.window.createTerminal({ name: "\u{1F3AD} Playwright Setup", cwd: projectFolderUri.fsPath });
+                term.show();
+                term.sendText("npm install && npx playwright install");
+              }
+            });
+            panel.webview.postMessage({
+              type: "projectCreated",
+              path: projectFolderUri.fsPath,
+              files: extractedFiles.map((f) => f.name)
+            });
+          } else {
+            panel.webview.postMessage({
+              type: "projectError",
+              error: "Could not extract files from the AI response. Please try again or check the output format."
+            });
+          }
+        } catch (error2) {
+          panel.webview.postMessage({
+            type: "projectError",
+            error: error2 instanceof Error ? error2.message : String(error2)
+          });
+        }
+        break;
+      case "createPlaywrightProject":
+        try {
+          const targetPath = message.targetFolder;
+          const testName = message.testName || "playwright-test";
+          const safeName = testName.replace(/[^a-zA-Z0-9-_]/g, "-").toLowerCase();
+          const projectFolderUri = vscode8.Uri.file(`${targetPath}/${safeName}`);
+          await vscode8.workspace.fs.createDirectory(projectFolderUri);
+          const filesList = message.files;
+          for (const file2 of filesList) {
+            const fileUri = vscode8.Uri.joinPath(projectFolderUri, file2.name);
+            const dirPath = file2.name.split("/").slice(0, -1).join("/");
+            if (dirPath) {
+              await vscode8.workspace.fs.createDirectory(vscode8.Uri.joinPath(projectFolderUri, dirPath));
+            }
+            await vscode8.workspace.fs.writeFile(fileUri, Buffer.from(file2.content, "utf-8"));
+          }
+          vscode8.window.showInformationMessage(
+            `\u2705 Created project: ${safeName}`,
+            "Open Folder",
+            "Run npm install"
+          ).then((selection) => {
+            if (selection === "Open Folder") {
+              vscode8.commands.executeCommand("vscode.openFolder", projectFolderUri);
+            } else if (selection === "Run npm install") {
+              const term = vscode8.window.createTerminal({ name: "\u{1F3AD} Playwright Setup", cwd: projectFolderUri.fsPath });
+              term.show();
+              term.sendText("npm install && npx playwright install");
+            }
+          });
+          panel.webview.postMessage({
+            type: "projectCreated",
+            path: projectFolderUri.fsPath
+          });
+        } catch (error2) {
+          vscode8.window.showErrorMessage(`Failed to create project: ${error2 instanceof Error ? error2.message : String(error2)}`);
+          panel.webview.postMessage({
+            type: "projectError",
+            error: error2 instanceof Error ? error2.message : String(error2)
+          });
+        }
+        break;
+      case "goBack":
+        panel.dispose();
+        _AppsPanel.openAppsHub();
+        break;
+    }
+  }
+  /**
+   * Get user preferences
+   */
+  static getPreferences() {
+    return _AppsPanel.context.globalState.get("appsHub.preferences", {
+      favoriteApps: [],
+      recentApps: [],
+      savedProjects: [],
+      appSettings: {}
+    });
+  }
+  /**
+   * Toggle favorite
+   */
+  static async toggleFavorite(appId) {
+    const prefs = _AppsPanel.getPreferences();
+    const index = prefs.favoriteApps.indexOf(appId);
+    if (index >= 0) {
+      prefs.favoriteApps.splice(index, 1);
+    } else {
+      prefs.favoriteApps.push(appId);
+    }
+    await _AppsPanel.context.globalState.update("appsHub.preferences", prefs);
+  }
+  /**
+   * Add to recent apps
+   */
+  static async addRecentApp(appId) {
+    const prefs = _AppsPanel.getPreferences();
+    const index = prefs.recentApps.indexOf(appId);
+    if (index >= 0) {
+      prefs.recentApps.splice(index, 1);
+    }
+    prefs.recentApps.unshift(appId);
+    prefs.recentApps = prefs.recentApps.slice(0, 5);
+    await _AppsPanel.context.globalState.update("appsHub.preferences", prefs);
+  }
+  /**
+   * Generate Apps Hub HTML
+   */
+  static getHubHtml(webview) {
+    const nonce = getNonce2();
+    const prefs = _AppsPanel.getPreferences();
+    const grouped = getAppsGroupedByCategory();
+    const favoriteApps = prefs.favoriteApps.map((id) => getAppById(id)).filter(Boolean);
+    const recentApps = prefs.recentApps.map((id) => getAppById(id)).filter(Boolean);
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copilot Apps</title>
+    <style>
+        :root { color-scheme: var(--vscode-color-scheme); }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background: var(--vscode-editor-background);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 32px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #38bdf8, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p {
+            font-size: 16px;
+            opacity: 0.7;
+        }
+        .search-container {
+            max-width: 500px;
+            margin: 32px auto;
+        }
+        .search-box {
+            width: 100%;
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--vscode-input-border);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-size: 15px;
+            transition: all 0.2s ease;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 20%, transparent);
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .app-card {
+            position: relative;
+            padding: 24px;
+            border-radius: 16px;
+            background: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-widget-border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .app-card:hover {
+            border-color: var(--vscode-focusBorder);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+        .app-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+        .app-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .app-desc {
+            font-size: 13px;
+            opacity: 0.7;
+            line-height: 1.5;
+        }
+        .app-category {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            background: color-mix(in srgb, var(--vscode-focusBorder) 15%, transparent);
+            color: var(--vscode-foreground);
+        }
+        .favorite-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            opacity: 0.3;
+            transition: all 0.15s ease;
+        }
+        .favorite-btn:hover { opacity: 0.8; transform: scale(1.1); }
+        .favorite-btn.active { opacity: 1; }
+        .category-section {
+            margin-top: 32px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>\u{1F4E6} Copilot Apps Hub</h1>
+            <p>AI-powered tools for developers, QA, and leadership</p>
+        </div>
+
+        <div class="search-container">
+            <input type="text" class="search-box" placeholder="\u{1F50D} Search apps..." id="search-input">
+        </div>
+
+        ${favoriteApps.length > 0 ? `
+        <div class="section" id="favorites-section">
+            <div class="section-title">\u2B50 Favorites</div>
+            <div class="apps-grid">
+                ${favoriteApps.map((app) => _AppsPanel.renderAppCard(app, true)).join("")}
+            </div>
+        </div>
+        ` : ""}
+
+        ${recentApps.length > 0 ? `
+        <div class="section" id="recent-section">
+            <div class="section-title">\u{1F550} Recently Used</div>
+            <div class="apps-grid">
+                ${recentApps.slice(0, 4).map((app) => _AppsPanel.renderAppCard(app, prefs.favoriteApps.includes(app.id))).join("")}
+            </div>
+        </div>
+        ` : ""}
+
+        <div class="section" id="all-apps-section">
+            <div class="section-title">\u{1F4E6} All Apps</div>
+            ${Object.entries(grouped).filter(([_, apps]) => apps.length > 0).map(([category, apps]) => `
+                <div class="category-section">
+                    <div class="section-title" style="font-size: 12px; margin-bottom: 16px;">
+                        ${categoryMetadata[category]?.icon || "\u{1F4C1}"} 
+                        ${categoryMetadata[category]?.label || category}
+                    </div>
+                    <div class="apps-grid">
+                        ${apps.map((app) => _AppsPanel.renderAppCard(app, prefs.favoriteApps.includes(app.id))).join("")}
+                    </div>
+                </div>
+            `).join("")}
+        </div>
+    </div>
+
+    <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        
+        // App click handlers
+        document.querySelectorAll('.app-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.favorite-btn')) return;
+                vscode.postMessage({ type: 'openApp', appId: card.dataset.appId });
+            });
+        });
+        
+        // Favorite handlers
+        document.querySelectorAll('.favorite-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'toggleFavorite', appId: btn.dataset.appId });
+            });
+        });
+        
+        // Search
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            document.querySelectorAll('.app-card').forEach(card => {
+                const name = card.querySelector('.app-name').textContent.toLowerCase();
+                const desc = card.querySelector('.app-desc').textContent.toLowerCase();
+                card.style.display = (name.includes(query) || desc.includes(query)) ? 'block' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>`;
+  }
+  /**
+   * Render an app card for the hub
+   */
+  static renderAppCard(app, isFavorite) {
+    return `
+            <div class="app-card" data-app-id="${app.id}">
+                <button class="favorite-btn ${isFavorite ? "active" : ""}" data-app-id="${app.id}">
+                    ${isFavorite ? "\u2B50" : "\u2606"}
+                </button>
+                <div class="app-icon">${app.icon}</div>
+                <div class="app-name">${app.name}</div>
+                <div class="app-desc">${app.description}</div>
+                <div class="app-category">${categoryMetadata[app.category]?.label || app.category}</div>
+            </div>
+        `;
+  }
+  /**
+   * Generate individual app HTML
+   */
+  static getAppHtml(webview, app, savedProjects) {
+    const nonce = getNonce2();
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${app.icon} ${app.name}</title>
+    <style>
+        :root { color-scheme: var(--vscode-color-scheme); }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background: var(--vscode-editor-background);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--vscode-widget-border);
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            font-size: 13px;
+            margin-bottom: 24px;
+            transition: all 0.15s ease;
+        }
+        .back-btn:hover {
+            background: var(--vscode-button-secondaryBackground);
+            border-color: var(--vscode-focusBorder);
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        .header-icon {
+            font-size: 56px;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 20px;
+            background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(167,139,250,0.1));
+            border: 1px solid var(--vscode-widget-border);
+        }
+        .header-text h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .header-text p {
+            font-size: 15px;
+            opacity: 0.7;
+        }
+        .form-section {
+            background: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .form-group {
+            margin-bottom: 24px;
+        }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-label {
+            display: block;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .form-hint {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 6px;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--vscode-input-border);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-family: var(--vscode-font-family);
+            font-size: 14px;
+            transition: all 0.15s ease;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 15%, transparent);
+        }
+        textarea {
+            font-family: var(--vscode-editor-font-family);
+            resize: vertical;
+            min-height: 140px;
+            line-height: 1.5;
+        }
+        .radio-group, .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .radio-option, .checkbox-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .radio-option:hover, .checkbox-option:hover {
+            border-color: var(--vscode-focusBorder);
+        }
+        .radio-option.selected, .checkbox-option.selected {
+            border-color: var(--vscode-focusBorder);
+            background: color-mix(in srgb, var(--vscode-focusBorder) 8%, var(--vscode-editor-background));
+        }
+        .radio-option input, .checkbox-option input {
+            margin: 3px 0 0 0;
+        }
+        .option-content { flex: 1; }
+        .option-label {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .option-desc {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 3px;
+        }
+        .project-picker {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .project-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+        }
+        .project-item .name { flex: 1; font-weight: 500; }
+        .project-item .path {
+            font-size: 11px;
+            opacity: 0.6;
+            font-family: var(--vscode-editor-font-family);
+        }
+        .project-item .remove-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            opacity: 0.5;
+            font-size: 16px;
+        }
+        .project-item .remove-btn:hover { opacity: 1; }
+        .add-project-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px;
+            border-radius: 10px;
+            border: 2px dashed var(--vscode-widget-border);
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.15s ease;
+        }
+        .add-project-btn:hover {
+            border-color: var(--vscode-focusBorder);
+            background: color-mix(in srgb, var(--vscode-focusBorder) 5%, transparent);
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 16px 28px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--vscode-button-background), color-mix(in srgb, var(--vscode-button-background) 80%, black));
+            color: var(--vscode-button-foreground);
+            font-family: var(--vscode-font-family);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        }
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .result-section {
+            margin-top: 32px;
+        }
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .result-header h3 {
+            font-size: 18px;
+        }
+        .result-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .action-btn {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--vscode-widget-border);
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .action-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+            border-color: var(--vscode-focusBorder);
+        }
+        .result-content {
+            background: var(--vscode-editorWidget-background);
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 12px;
+            padding: 24px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 13px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .result-content.error {
+            background: color-mix(in srgb, var(--vscode-testing-iconFailed) 10%, var(--vscode-editor-background));
+            border-color: var(--vscode-testing-iconFailed);
+            color: var(--vscode-testing-iconFailed);
+        }
+        .progress-msg {
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.7;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .hidden { display: none !important; }
+        .conditional-field { display: none; }
+        .conditional-field.visible { display: block; }
+        .file-picker-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-widget-border);
+        }
+        .file-item .file-icon { font-size: 20px; }
+        .file-item .file-info { flex: 1; }
+        .file-item .file-name { font-weight: 500; font-size: 13px; }
+        .file-item .file-size { font-size: 11px; opacity: 0.6; }
+        .file-item .remove-file-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            opacity: 0.5;
+            font-size: 16px;
+            padding: 4px;
+        }
+        .file-item .remove-file-btn:hover { opacity: 1; }
+        .add-file-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px;
+            border-radius: 10px;
+            border: 2px dashed var(--vscode-widget-border);
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.15s ease;
+        }
+        .add-file-btn:hover {
+            border-color: var(--vscode-focusBorder);
+            background: color-mix(in srgb, var(--vscode-focusBorder) 5%, transparent);
+        }
+        .model-picker-container {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .model-select {
+            flex: 1;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--vscode-input-border);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            font-size: 13px;
+        }
+        .refresh-models-btn {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--vscode-widget-border);
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-models-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="back-btn" id="back-btn">\u2190 Back to Apps</button>
+        
+        <div class="header">
+            <div class="header-icon">${app.icon}</div>
+            <div class="header-text">
+                <h1>${app.name}</h1>
+                <p>${app.description}</p>
+            </div>
+        </div>
+
+        <form id="app-form">
+            <div class="form-section">
+                ${app.inputs.map((input) => _AppsPanel.renderInputField(input, savedProjects)).join("")}
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn">
+                ${app.primaryAction}
+            </button>
+        </form>
+
+        <div class="result-section hidden" id="result-section">
+            <div class="result-header">
+                <h3>\u{1F4CB} Result</h3>
+                <div class="result-actions">
+                    <button class="action-btn" id="copy-btn">\u{1F4CB} Copy</button>
+                    <button class="action-btn" id="insert-btn">\u{1F4DD} Insert</button>
+                    <button class="action-btn" id="save-btn">\u{1F4BE} Save</button>
+                </div>
+            </div>
+            <div class="progress-msg hidden" id="progress-msg">
+                <div class="spinner"></div>
+                <span id="progress-text">Processing...</span>
+            </div>
+            <div class="result-content hidden" id="result-content"></div>
+        </div>
+    </div>
+
+    <script nonce="${nonce}">
+        const vscode = acquireVsCodeApi();
+        const appId = '${app.id}';
+        let currentResult = '';
+        let selectedProjects = ${JSON.stringify(savedProjects.map((p) => p.path))};
+
+        // Back button
+        document.getElementById('back-btn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'goBack' });
+        });
+
+        // Form submission
+        document.getElementById('app-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const inputs = {};
+            
+            for (const [key, value] of formData.entries()) {
+                inputs[key] = value;
+            }
+            
+            // Handle multi-select
+            document.querySelectorAll('.checkbox-group').forEach(group => {
+                const name = group.dataset.name;
+                const checked = Array.from(group.querySelectorAll('input:checked')).map(cb => cb.value);
+                inputs[name] = checked.join(',');
+            });
+            
+            // Handle project picker
+            if (selectedProjects.length > 0) {
+                inputs['projectPaths'] = JSON.stringify(selectedProjects);
+            }
+            
+            // Show loading
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Processing...';
+            
+            document.getElementById('result-section').classList.remove('hidden');
+            document.getElementById('progress-msg').classList.remove('hidden');
+            document.getElementById('result-content').classList.add('hidden');
+            
+            vscode.postMessage({ type: 'executeApp', inputs });
+        });
+
+        // Handle messages
+        window.addEventListener('message', (event) => {
+            const message = event.data;
+            
+            switch (message.type) {
+                case 'progress':
+                    document.getElementById('progress-text').textContent = message.message;
+                    break;
+                    
+                case 'result':
+                    const submitBtn = document.getElementById('submit-btn');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '${app.primaryAction}';
+                    
+                    document.getElementById('progress-msg').classList.add('hidden');
+                    const content = document.getElementById('result-content');
+                    content.classList.remove('hidden', 'error');
+                    
+                    if (message.result.success) {
+                        currentResult = message.result.output.content;
+                        
+                        // Check if this is Playwright app - auto-create project
+                        const isPlaywrightApp = '${app.id}' === 'playwright-generator';
+                        const targetFolder = selectedProjects[0];
+                        
+                        if (isPlaywrightApp && targetFolder) {
+                            content.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div><p>Creating project files...</p></div>';
+                            
+                            const testName = document.querySelector('input[name="testName"]')?.value || 'playwright-test';
+                            vscode.postMessage({
+                                type: 'extractAndCreateProject',
+                                targetFolder: targetFolder,
+                                testName: testName,
+                                rawContent: currentResult,
+                                language: document.querySelector('input[name="language"]:checked')?.value || 'typescript'
+                            });
+                        } else if (isPlaywrightApp && !targetFolder) {
+                            content.innerHTML = '<div style="color:orange;padding:20px;text-align:center;">\u26A0\uFE0F Please select a target folder first!</div>';
+                        } else {
+                            content.textContent = currentResult;
+                        }
+                    } else {
+                        content.classList.add('error');
+                        content.textContent = 'Error: ' + message.result.error;
+                    }
+                    break;
+                    
+                case 'projectAdded':
+                    if (!selectedProjects.includes(message.project.path)) {
+                        selectedProjects.push(message.project.path);
+                        updateProjectList();
+                    }
+                    break;
+                    
+                case 'filesReceived':
+const fieldId = message.fieldId;
+if (!attachedFiles[fieldId]) {
+    attachedFiles[fieldId] = [];
+}
+message.files.forEach(f => {
+    if (!attachedFiles[fieldId].some(existing => existing.name === f.name)) {
+        attachedFiles[fieldId].push(f);
+    }
+});
+updateFileList(fieldId);
+break;
+                    
+                case 'modelsReceived':
+const modelFieldId = message.fieldId;
+const select = document.getElementById('model-select-' + modelFieldId);
+if (select) {
+    // Keep auto option, add models
+    select.innerHTML = '<option value="auto">\u{1F916} Auto (Best Available)</option>' +
+        message.models.map(m =>
+            \`<option value="\${m.id}">\${m.vendor} - \${m.name}</option>\`
+                            ).join('');
+                    }
+                    break;
+                    
+                case 'projectCreated':
+                    document.getElementById('result-section').classList.remove('hidden');
+                    document.getElementById('progress-msg').classList.add('hidden');
+                    document.getElementById('submit-btn').disabled = false;
+                    const createdContent = document.getElementById('result-content');
+                    createdContent.classList.remove('hidden', 'error');
+                    createdContent.innerHTML = \`
+                        <div style="text-align: center; padding: 20px;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">\u2705</div>
+                            <h3 style="margin-bottom: 8px;">Project Created Successfully!</h3>
+                            <p style="opacity: 0.7; margin-bottom: 16px;">Location: \${message.path}</p>
+                            <p style="font-size: 13px; margin-bottom: 16px;">Files: \${message.files ? message.files.join(', ') : 'package.json, config, test'}</p>
+                        </div>
+                        <div style="text-align: left; background: var(--vscode-terminal-background, #1e1e1e); border-radius: 8px; padding: 16px; margin-top: 16px;">
+                            <p style="font-weight: 600; margin-bottom: 12px; color: var(--vscode-terminal-foreground, #ccc);">\u{1F4E6} Install & Run Commands:</p>
+                            <pre style="background: var(--vscode-editor-background); padding: 12px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 13px; line-height: 1.6;"><code># Navigate to project folder
+cd "\${message.path}"
+
+# Install dependencies
+npm install
+
+# Install Playwright browsers
+npx playwright install
+
+# Run the tests
+npx playwright test
+
+# View HTML report
+npx playwright show-report</code></pre>
+                        </div>
+                    \`;
+                    break;
+                    
+                case 'projectError':
+                    document.getElementById('result-section').classList.remove('hidden');
+                    document.getElementById('progress-msg').classList.add('hidden');
+                    document.getElementById('submit-btn').disabled = false;
+                    const errorContent = document.getElementById('result-content');
+                    errorContent.classList.remove('hidden');
+                    errorContent.classList.add('error');
+                    errorContent.textContent = 'Error creating project: ' + message.error;
+                    break;
+            }
+        });
+
+        // Action buttons
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'copyToClipboard', value: currentResult });
+        });
+
+        document.getElementById('insert-btn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'insertAtCursor', value: currentResult });
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            vscode.postMessage({ 
+                type: 'saveAsFile', 
+                content: currentResult, 
+                filename: '${app.id}-output.md'
+            });
+        });
+
+        // Project management
+        document.querySelectorAll('.add-project-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                vscode.postMessage({ type: 'pickProjectFolder' });
+            });
+        });
+
+        function removeProject(path) {
+            selectedProjects = selectedProjects.filter(p => p !== path);
+            updateProjectList();
+        }
+        window.removeProject = removeProject;
+
+        function updateProjectList() {
+            const container = document.querySelector('.project-picker');
+            if (!container) return;
+            
+            const items = selectedProjects.map(path => {
+                const name = path.split('/').pop();
+                return \`
+                    <div class="project-item">
+                        <span>\u{1F4C1}</span>
+                        <div class="name">\${name}</div>
+                        <div class="path">\${path}</div>
+                        <button type="button" class="remove-btn" onclick="removeProject('\${path}')">\u2715</button>
+                    </div>
+                \`;
+            }).join('');
+            
+            container.innerHTML = items + '<button type="button" class="add-project-btn">+ Add Project Folder</button>';
+            container.querySelector('.add-project-btn').addEventListener('click', () => {
+                vscode.postMessage({ type: 'pickProjectFolder' });
+            });
+        }
+
+        // File picker handling
+        const attachedFiles = {};
+        
+        document.querySelectorAll('.add-file-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fieldId = btn.dataset.fieldId;
+                vscode.postMessage({ type: 'pickFiles', fieldId });
+            });
+        });
+
+        function removeFile(fieldId, fileName) {
+            if (attachedFiles[fieldId]) {
+                attachedFiles[fieldId] = attachedFiles[fieldId].filter(f => f.name !== fileName);
+                updateFileList(fieldId);
+            }
+        }
+        window.removeFile = removeFile;
+
+        function updateFileList(fieldId) {
+            const container = document.getElementById('file-list-' + fieldId);
+            const hiddenInput = document.getElementById('files-data-' + fieldId);
+            if (!container) return;
+            
+            const files = attachedFiles[fieldId] || [];
+            const fileIcons = { xlsx: '\u{1F4CA}', docx: '\u{1F4C4}', txt: '\u{1F4DD}', md: '\u{1F4D1}' };
+            
+            container.innerHTML = files.map(file => {
+                const ext = file.name.split('.').pop().toLowerCase();
+                const icon = fileIcons[ext] || '\u{1F4CE}';
+                return \`
+                    <div class="file-item">
+                        <span class="file-icon">\${icon}</span>
+                        <div class="file-info">
+                            <div class="file-name">\${file.name}</div>
+                            <div class="file-size">\${file.content.length > 1000 ? (file.content.length / 1024).toFixed(1) + ' KB' : file.content.length + ' bytes'}</div>
+                        </div>
+                        <button type="button" class="remove-file-btn" onclick="removeFile('\${fieldId}', '\${file.name}')">\u2715</button>
+                    </div>
+                \`;
+            }).join('');
+            
+            // Update hidden input with file contents
+            hiddenInput.value = JSON.stringify(files);
+        }
+
+        // Model picker handling
+        document.querySelectorAll('.refresh-models-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fieldId = btn.dataset.fieldId;
+                vscode.postMessage({ type: 'getAvailableModels', fieldId });
+            });
+        });
+        
+        // Auto-fetch models on load for all model pickers
+        document.querySelectorAll('.model-select').forEach(select => {
+            const fieldId = select.id.replace('model-select-', '');
+            vscode.postMessage({ type: 'getAvailableModels', fieldId });
+        });
+
+        // Radio/checkbox handling
+        document.querySelectorAll('.radio-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const group = option.closest('.radio-group');
+                group.querySelectorAll('.radio-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                option.querySelector('input').checked = true;
+                handleConditionalFields(option.querySelector('input').name, option.querySelector('input').value);
+            });
+        });
+
+        document.querySelectorAll('.checkbox-option').forEach(option => {
+            option.addEventListener('click', () => {
+                option.classList.toggle('selected');
+                const cb = option.querySelector('input');
+                cb.checked = !cb.checked;
+            });
+        });
+
+        function handleConditionalFields(fieldName, value) {
+            document.querySelectorAll('.conditional-field').forEach(field => {
+                const showIf = field.dataset.showIf;
+                if (showIf) {
+                    const [condField, condValue] = showIf.split('=');
+                    if (condField === fieldName) {
+                        field.classList.toggle('visible', condValue.includes(',') 
+                            ? condValue.split(',').includes(value) 
+                            : condValue === value);
+                    }
+                }
+            });
+        }
+
+        // Initialize conditional fields
+        document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+            handleConditionalFields(radio.name, radio.value);
+        });
+    </script>
+</body>
+</html>`;
+  }
+  /**
+   * Render a form input field
+   */
+  static renderInputField(input, savedProjects) {
+    const showIfAttr = input.showIf ? `data-show-if="${input.showIf.field}=${Array.isArray(input.showIf.equals) ? input.showIf.equals.join(",") : input.showIf.equals}"` : "";
+    const conditionalClass = input.showIf ? "conditional-field" : "";
+    switch (input.type) {
+      case "textarea":
+      case "code":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <textarea 
+                            name="${input.id}" 
+                            placeholder="${input.placeholder || ""}"
+                            rows="${input.rows || 5}"
+                            ${input.required ? "required" : ""}
+                        >${input.defaultValue || ""}</textarea>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "select":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <select name="${input.id}" ${input.required ? "required" : ""}>
+                            ${(input.options || []).map((opt) => `
+                                <option value="${opt.value}" ${input.defaultValue === opt.value ? "selected" : ""}>
+                                    ${opt.label}
+                                </option>
+                            `).join("")}
+                        </select>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "radio":
+        const defaultRadio = input.defaultValue || input.options?.[0]?.value;
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <div class="radio-group">
+                            ${(input.options || []).map((opt) => `
+                                <label class="radio-option ${defaultRadio === opt.value ? "selected" : ""}">
+                                    <input type="radio" name="${input.id}" value="${opt.value}" 
+                                           ${defaultRadio === opt.value ? "checked" : ""}>
+                                    <div class="option-content">
+                                        <div class="option-label">${opt.icon || ""} ${opt.label}</div>
+                                        ${opt.description ? `<div class="option-desc">${opt.description}</div>` : ""}
+                                    </div>
+                                </label>
+                            `).join("")}
+                        </div>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "multi-select":
+        const defaults = (input.defaultValue || "").split(",");
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}</label>
+                        <div class="checkbox-group" data-name="${input.id}">
+                            ${(input.options || []).map((opt) => `
+                                <label class="checkbox-option ${defaults.includes(opt.value) ? "selected" : ""}">
+                                    <input type="checkbox" name="${input.id}" value="${opt.value}" 
+                                           ${defaults.includes(opt.value) ? "checked" : ""}>
+                                    <div class="option-content">
+                                        <div class="option-label">${opt.label}</div>
+                                        ${opt.description ? `<div class="option-desc">${opt.description}</div>` : ""}
+                                    </div>
+                                </label>
+                            `).join("")}
+                        </div>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "project-picker":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <div class="project-picker">
+                            ${savedProjects.map((proj) => `
+                                <div class="project-item">
+                                    <span>\u{1F4C1}</span>
+                                    <div class="name">${proj.name}</div>
+                                    <div class="path">${proj.path}</div>
+                                    <button type="button" class="remove-btn" onclick="removeProject('${proj.path}')">\u2715</button>
+                                </div>
+                            `).join("")}
+                            <button type="button" class="add-project-btn">+ Add Project Folder</button>
+                        </div>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "file-picker":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <div class="file-picker-container" data-field-id="${input.id}">
+                            <div class="file-list" id="file-list-${input.id}"></div>
+                            <button type="button" class="add-file-btn" data-field-id="${input.id}">
+                                \u{1F4CE} Attach Files (.xlsx, .docx, .txt, .md)
+                            </button>
+                            <input type="hidden" name="${input.id}" id="files-data-${input.id}" value="">
+                        </div>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "model-picker":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}</label>
+                        <div class="model-picker-container">
+                            <select name="${input.id}" id="model-select-${input.id}" class="model-select">
+                                <option value="auto">\u{1F916} Auto (Best Available)</option>
+                            </select>
+                            <button type="button" class="refresh-models-btn" data-field-id="${input.id}">\u{1F504}</button>
+                        </div>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      case "checkbox":
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="checkbox-option ${input.defaultValue === "true" ? "selected" : ""}" style="display: inline-flex;">
+                            <input type="checkbox" name="${input.id}" value="true" 
+                                   ${input.defaultValue === "true" ? "checked" : ""}>
+                            <div class="option-content">
+                                <div class="option-label">${input.label}</div>
+                            </div>
+                        </label>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+      default:
+        return `
+                    <div class="form-group ${conditionalClass}" ${showIfAttr}>
+                        <label class="form-label">${input.label}${input.required ? " *" : ""}</label>
+                        <input type="text" 
+                               name="${input.id}" 
+                               placeholder="${input.placeholder || ""}"
+                               value="${input.defaultValue || ""}"
+                               ${input.required ? "required" : ""}>
+                        ${input.hint ? `<div class="form-hint">${input.hint}</div>` : ""}
+                    </div>
+                `;
+    }
+  }
+};
+function getNonce2() {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
+// src/commands/createDesktopShortcut.ts
+var vscode9 = __toESM(require("vscode"));
+var os2 = __toESM(require("os"));
+var path4 = __toESM(require("path"));
+var fs4 = __toESM(require("fs"));
 async function createDesktopShortcut() {
   console.log("Creating desktop shortcut...");
   const osType = os2.platform();
   if (osType !== "darwin") {
-    vscode6.window.showErrorMessage("Desktop shortcut creation is currently only supported on macOS.");
+    vscode9.window.showErrorMessage("Desktop shortcut creation is currently only supported on macOS.");
     return;
   }
   try {
     const homeDir = os2.homedir();
-    const desktopPath = path3.join(homeDir, "Desktop");
+    const desktopPath = path4.join(homeDir, "Desktop");
     const linkUrl = "vscode://suhaibbinyounis.github-copilot-api-vscode/dashboard";
     const shortcutContent = `#!/bin/bash
 open "${linkUrl}"
 `;
-    const shortcutPath = path3.join(desktopPath, "Copilot Dashboard.command");
-    await fs3.promises.writeFile(shortcutPath, shortcutContent, "utf8");
-    await fs3.promises.chmod(shortcutPath, 493);
-    vscode6.window.showInformationMessage(`SHORTCUT CREATED: "Copilot Dashboard.command" has been added to your Desktop.`);
+    const shortcutPath = path4.join(desktopPath, "Copilot Dashboard.command");
+    await fs4.promises.writeFile(shortcutPath, shortcutContent, "utf8");
+    await fs4.promises.chmod(shortcutPath, 493);
+    vscode9.window.showInformationMessage(`SHORTCUT CREATED: "Copilot Dashboard.command" has been added to your Desktop.`);
     console.log(`Shortcut created at ${shortcutPath}`);
   } catch (error2) {
     console.error("Failed to create shortcut:", error2);
-    vscode6.window.showErrorMessage(`Failed to create desktop shortcut: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    vscode9.window.showErrorMessage(`Failed to create desktop shortcut: ${error2 instanceof Error ? error2.message : String(error2)}`);
   }
 }
 
 // src/extension.ts
 function activate(context) {
-  const output = vscode7.window.createOutputChannel("GitHub Copilot API Server");
+  const output = vscode10.window.createOutputChannel("GitHub Copilot API Server");
   context.subscriptions.push(output);
-  const statusItem = vscode7.window.createStatusBarItem(vscode7.StatusBarAlignment.Left, 100);
+  const statusItem = vscode10.window.createStatusBarItem(vscode10.StatusBarAlignment.Left, 100);
   statusItem.command = "github-copilot-api-vscode.showServerControls";
   context.subscriptions.push(statusItem);
   const gateway = new CopilotApiGateway(output, statusItem, context);
   context.subscriptions.push(gateway);
   const provider = new CopilotPanel(context.extensionUri, gateway);
   context.subscriptions.push(
-    vscode7.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
+    vscode10.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
+  );
+  AppsPanel.initialize(context);
+  context.subscriptions.push(
+    vscode10.commands.registerCommand("github-copilot-api-vscode.openAppsHub", () => {
+      AppsPanel.openAppsHub();
+    })
   );
   const updateStatusBar = async () => {
     const status = await gateway.getStatus();
@@ -54996,12 +58508,12 @@ function activate(context) {
       }
       if (status.activeRequests > 0) {
         statusItem.text = `$(sync~spin) Processing (${status.activeRequests}) | ${rpm} RPM`;
-        statusItem.backgroundColor = new vscode7.ThemeColor("statusBarItem.warningBackground");
+        statusItem.backgroundColor = new vscode10.ThemeColor("statusBarItem.warningBackground");
       } else {
         statusItem.text = text;
         statusItem.backgroundColor = void 0;
       }
-      statusItem.tooltip = new vscode7.MarkdownString(`
+      statusItem.tooltip = new vscode10.MarkdownString(`
 **Copilot API Gateway**
 - **Status**: Active
 - **Host**: ${status.config.host}:${status.config.port}
@@ -55013,7 +58525,7 @@ function activate(context) {
     } else {
       statusItem.text = "$(circle-slash) Copilot API: OFF";
       statusItem.tooltip = "Copilot API server is stopped. Click to manage.";
-      statusItem.backgroundColor = new vscode7.ThemeColor("statusBarItem.errorBackground");
+      statusItem.backgroundColor = new vscode10.ThemeColor("statusBarItem.errorBackground");
       statusItem.show();
     }
   };
@@ -55022,20 +58534,20 @@ function activate(context) {
     await updateStatusBar();
     const status = await gateway.getStatus();
     if (status.running && !wasRunning) {
-      const config3 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
+      const config3 = vscode10.workspace.getConfiguration("githubCopilotApi.server");
       if (config3.get("showNotifications", true)) {
-        const selection = await vscode7.window.showInformationMessage(
+        const selection = await vscode10.window.showInformationMessage(
           `GitHub Copilot API Server started at http://${status.config.host}:${status.config.port}`,
           "Open Dashboard"
         );
         if (selection === "Open Dashboard") {
-          void vscode7.commands.executeCommand("github-copilot-api-vscode.openDashboard");
+          void vscode10.commands.executeCommand("github-copilot-api-vscode.openDashboard");
         }
       }
     }
     wasRunning = status.running;
   }));
-  const showServerControls = vscode7.commands.registerCommand("github-copilot-api-vscode.showServerControls", async () => {
+  const showServerControls = vscode10.commands.registerCommand("github-copilot-api-vscode.showServerControls", async () => {
     const status = await gateway.getStatus();
     const items = [];
     if (status.running) {
@@ -55043,7 +58555,7 @@ function activate(context) {
         label: "$(check) Server is Running",
         description: `http://${status.config.host}:${status.config.port}`,
         detail: `Requests/min: ${status.stats.requestsPerMinute} | Avg Latency: ${status.stats.avgLatencyMs}ms | Errors: ${status.stats.errorRate}%`,
-        kind: vscode7.QuickPickItemKind.Separator
+        kind: vscode10.QuickPickItemKind.Separator
       });
       items.push({
         label: "$(stop-circle) Stop Server",
@@ -55056,14 +58568,14 @@ function activate(context) {
     } else {
       items.push({
         label: "$(x) Server is Stopped",
-        kind: vscode7.QuickPickItemKind.Separator
+        kind: vscode10.QuickPickItemKind.Separator
       });
       items.push({
         label: "$(play-circle) Start Server",
         description: "Start the API gateway"
       });
     }
-    items.push({ label: "", kind: vscode7.QuickPickItemKind.Separator });
+    items.push({ label: "", kind: vscode10.QuickPickItemKind.Separator });
     items.push({
       label: "$(dashboard) Open Full Dashboard",
       description: "View detailed charts, logs, and configuration"
@@ -55072,7 +58584,7 @@ function activate(context) {
       label: "$(output) Show Logs",
       description: "Open the output channel"
     });
-    const selection = await vscode7.window.showQuickPick(items, {
+    const selection = await vscode10.window.showQuickPick(items, {
       placeHolder: "Manage Copilot API Gateway",
       title: "Copilot API Controls"
     });
@@ -55092,27 +58604,27 @@ function activate(context) {
     }
   });
   void updateStatusBar();
-  const config2 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
+  const config2 = vscode10.workspace.getConfiguration("githubCopilotApi.server");
   const enabled = config2.get("enabled", false);
   const autoStart = config2.get("autoStart", false);
   output.appendLine(`[DEBUG] Activation. Enabled: ${enabled}, AutoStart: ${autoStart}`);
   if (enabled || autoStart) {
     void gateway.start().catch((error2) => {
       output.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error2)}`);
-      void vscode7.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error2)}`);
+      void vscode10.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error2)}`);
     });
   }
-  const openChatCommand = vscode7.commands.registerCommand("github-copilot-api-vscode.openCopilotChat", async () => {
+  const openChatCommand = vscode10.commands.registerCommand("github-copilot-api-vscode.openCopilotChat", async () => {
     if (!await ensureCopilotChatReady()) {
       return;
     }
-    await vscode7.commands.executeCommand("workbench.action.chat.open");
+    await vscode10.commands.executeCommand("workbench.action.chat.open");
   });
-  const askChatCommand = vscode7.commands.registerCommand("github-copilot-api-vscode.askCopilot", async (rawPrompt) => {
+  const askChatCommand = vscode10.commands.registerCommand("github-copilot-api-vscode.askCopilot", async (rawPrompt) => {
     if (!await ensureCopilotChatReady()) {
       return;
     }
-    const prompt = normalizePrompt(rawPrompt) ?? await vscode7.window.showInputBox({
+    const prompt = normalizePrompt(rawPrompt) ?? await vscode10.window.showInputBox({
       title: "Ask GitHub Copilot Chat",
       prompt: "What do you want to ask Copilot?",
       ignoreFocusOut: true
@@ -55120,21 +58632,21 @@ function activate(context) {
     if (!prompt) {
       return;
     }
-    await vscode7.commands.executeCommand("workbench.action.chat.open", {
+    await vscode10.commands.executeCommand("workbench.action.chat.open", {
       query: prompt,
       isPartialQuery: false
     });
   });
-  const askSelectionCommand = vscode7.commands.registerTextEditorCommand("github-copilot-api-vscode.askSelectionWithCopilot", async (editor, _edit, rawPrompt) => {
+  const askSelectionCommand = vscode10.commands.registerTextEditorCommand("github-copilot-api-vscode.askSelectionWithCopilot", async (editor, _edit, rawPrompt) => {
     if (!await ensureCopilotChatReady()) {
       return;
     }
     const selection = editor.selection;
     if (selection.isEmpty) {
-      void vscode7.window.showWarningMessage("Select some code before asking Copilot about it.");
+      void vscode10.window.showWarningMessage("Select some code before asking Copilot about it.");
       return;
     }
-    const prompt = normalizePrompt(rawPrompt) ?? await vscode7.window.showInputBox({
+    const prompt = normalizePrompt(rawPrompt) ?? await vscode10.window.showInputBox({
       title: "Ask Copilot About Selection",
       prompt: "Describe what you want to know about the selected code.",
       value: "Explain this code.",
@@ -55143,38 +58655,38 @@ function activate(context) {
     if (!prompt) {
       return;
     }
-    await vscode7.commands.executeCommand("workbench.action.chat.open", {
+    await vscode10.commands.executeCommand("workbench.action.chat.open", {
       query: prompt,
       isPartialQuery: false,
       attachFiles: [{
         uri: editor.document.uri,
-        range: new vscode7.Range(selection.start, selection.end)
+        range: new vscode10.Range(selection.start, selection.end)
       }],
       blockOnResponse: false
     });
   });
-  const openDashboard = vscode7.commands.registerCommand("github-copilot-api-vscode.openDashboard", () => {
+  const openDashboard = vscode10.commands.registerCommand("github-copilot-api-vscode.openDashboard", () => {
     CopilotPanel.createOrShow(context.extensionUri, gateway);
   });
-  const createShortcutCommand = vscode7.commands.registerCommand("github-copilot-api-vscode.createDesktopShortcut", async () => {
+  const createShortcutCommand = vscode10.commands.registerCommand("github-copilot-api-vscode.createDesktopShortcut", async () => {
     await createDesktopShortcut();
   });
-  context.subscriptions.push(vscode7.window.registerUriHandler({
+  context.subscriptions.push(vscode10.window.registerUriHandler({
     handleUri(uri) {
-      const path4 = uri.path;
-      output.appendLine(`[URI Handler] Received URI: ${uri.toString()} (path: ${path4})`);
-      if (path4 === "/dashboard") {
+      const path5 = uri.path;
+      output.appendLine(`[URI Handler] Received URI: ${uri.toString()} (path: ${path5})`);
+      if (path5 === "/dashboard") {
         CopilotPanel.createOrShow(context.extensionUri, gateway);
-      } else if (path4 === "/start") {
+      } else if (path5 === "/start") {
         void gateway.startServer().then(() => {
-          void vscode7.window.showInformationMessage("Copilot API Server started via shortcut");
+          void vscode10.window.showInformationMessage("Copilot API Server started via shortcut");
         });
-      } else if (path4 === "/stop") {
+      } else if (path5 === "/stop") {
         void gateway.stopServer().then(() => {
-          void vscode7.window.showInformationMessage("Copilot API Server stopped via shortcut");
+          void vscode10.window.showInformationMessage("Copilot API Server stopped via shortcut");
         });
       } else {
-        void vscode7.window.showWarningMessage(`Unknown shortcut path: ${path4}`);
+        void vscode10.window.showWarningMessage(`Unknown shortcut path: ${path5}`);
       }
     }
   }));
