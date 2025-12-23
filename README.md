@@ -118,6 +118,17 @@ Access at `http://127.0.0.1:3030/docs` when the server is running.
 
 ---
 
+## ⚡ Performance & Optimizations (v0.0.13)
+
+Major performance improvements have been implemented to ensure instant startup and low resource usage:
+
+- **🚀 Instant Startup**: Lazy-loading and deferred initialization means the extension activates 300ms faster.
+- **💾 Cached Stats**: Audit logs are now cached incrementally, avoiding expensive file reads.
+- **🔌 Optimized WebSocket**: The `ws` module is now only loaded if you explicitly enable WebSocket support.
+- **🌐 Better LAN Support**: Dashboard now correctly displays your actual LAN IP (e.g., `192.168.1.x`) and provides a one-click Copy URL button.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -179,6 +190,7 @@ All settings are prefixed with `githubCopilotApi.`:
 | `server.port` | `3030` | HTTP server port |
 | `server.autoStart` | `false` | Start server when VS Code launches |
 | `server.apiKey` | — | Optional Bearer token for authentication |
+| `server.enableWebSocket` | `false` | Enable WebSocket at `/v1/realtime` (Disabled by default) |
 
 ### Security Settings
 

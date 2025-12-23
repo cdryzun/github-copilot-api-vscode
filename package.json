@@ -3,7 +3,7 @@
   "displayName": "GitHub Copilot API Gateway",
   "description": "Transform GitHub Copilot into a full AI platform: OpenAI-compatible API server + Enterprise Apps Hub with Playwright Generator, Code Review, Commit Messages, and more.",
   "icon": "media/icon.png",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "author": {
     "name": "Suhaib Bin Younis",
     "email": "vscode@suhaib.in",
@@ -27,7 +27,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onUri"
+    "onUri",
+    "onView:copilotApiGateway",
+    "onView:copilotAppsHub",
+    "onCommand:github-copilot-api-vscode.showServerControls",
+    "onCommand:github-copilot-api-vscode.openAppsHub"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -162,8 +166,8 @@
         },
         "githubCopilotApi.server.enableWebSocket": {
           "type": "boolean",
-          "default": true,
-          "description": "Expose the WebSocket realtime endpoint at /v1/realtime."
+          "default": false,
+          "description": "Expose the WebSocket realtime endpoint at /v1/realtime. Disabled by default to reduce resource usage."
         },
         "githubCopilotApi.server.enableHttps": {
           "type": "boolean",

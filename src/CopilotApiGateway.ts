@@ -8,9 +8,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AuditService, AuditEntry } from './services/AuditService';
-import { McpService } from './McpService';
-import type { RawData, WebSocket } from 'ws';
-import { WebSocketServer } from 'ws';
+import type { McpService } from './McpService';
+import type { RawData, WebSocket, WebSocketServer } from 'ws';
 
 const COPILOT_CHAT_EXTENSION_ID = 'GitHub.copilot-chat';
 const COPILOT_CHAT_SEARCH_QUERY = '@id:GitHub.copilot-chat';
@@ -91,27 +90,6 @@ export interface RequestHistoryEntry {
 	model?: string
 	error?: string
 }
-
-// Model aliases for OpenAI compatibility
-const MODEL_ALIASES: Record<string, string> = {
-	'gpt-4': 'gpt-4o-copilot',
-	'gpt-4-turbo': 'gpt-4o-copilot',
-	'gpt-4-turbo-preview': 'gpt-4o-copilot',
-	'gpt-4o': 'gpt-4o-copilot',
-	'gpt-4o-mini': 'gpt-4o-mini-copilot',
-	'gpt-3.5-turbo': 'gpt-4o-mini-copilot',
-	'gpt-3.5-turbo-16k': 'gpt-4o-mini-copilot',
-	'claude-3-opus': 'claude-3.5-sonnet-copilot',
-	'claude-3-sonnet': 'claude-3.5-sonnet-copilot',
-	'claude-3-haiku': 'claude-3.5-sonnet-copilot',
-	'claude-3.5-sonnet': 'claude-3.5-sonnet-copilot',
-	'o1': 'o1-copilot',
-	'o1-mini': 'o1-mini-copilot',
-	'gemini-1.5-pro': 'gpt-4o-copilot',
-	'gemini-1.5-flash': 'gpt-4o-mini-copilot',
-	'o1-preview': 'o1-copilot',
-	'o3-mini': 'o3-mini-copilot'
-};
 
 // --- Anthropic API Interfaces ---
 export interface AnthropicMessageRequest {
@@ -227,16 +205,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 	private activeConnectionsPerIp = new Map<string, number>();
 
 	private auditService: AuditService;
-	private mcpService: McpService;
+	private mcpService?: McpService;
+	private mcpInitPromise?: Promise<void>;
 
 	constructor(private readonly output: vscode.OutputChannel, private readonly statusItem: vscode.StatusBarItem, context: vscode.ExtensionContext) {
 		this.context = context;
 		this.auditService = new AuditService(context);
-		this.mcpService = new McpService(output);
-		this.mcpService.initialize().catch(err => console.error('Failed to initialize MCP:', err));
-		this.loadHistory();
-		this.startStatsUpdater();
-		this.startDomainCacheRefresh();
+		// MCP is loaded lazily when needed - no initialization here
+		// Timer intervals deferred to start() to not run when server is stopped
 
 		const subscription = vscode.workspace.onDidChangeConfiguration(event => {
 			if (event.affectsConfiguration('githubCopilotApi.server')) {
@@ -250,8 +226,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 		});
 		this.disposables.push(subscription);
 
-		// Initialize stats from persistent storage
+		// Initialize stats from persistent storage (async, non-blocking)
 		this.initializeStats().catch(err => console.error('Failed to initialize stats:', err));
+		// Load request history (async, non-blocking)
+		setImmediate(() => this.loadHistory());
 	}
 
 	private async initializeStats() {
@@ -263,6 +241,32 @@ export class CopilotApiGateway implements vscode.Disposable {
 		} catch (error) {
 			console.error('Failed to load lifetime stats:', error);
 		}
+	}
+
+	/**
+	 * Lazy-load MCP service only when needed
+	 * Returns undefined if MCP is disabled
+	 */
+	private async ensureMcpService(): Promise<McpService | undefined> {
+		const mcpEnabled = vscode.workspace.getConfiguration('githubCopilotApi.mcp').get<boolean>('enabled', true);
+		if (!mcpEnabled) {
+			return undefined;
+		}
+
+		if (this.mcpService) {
+			return this.mcpService;
+		}
+
+		if (!this.mcpInitPromise) {
+			this.mcpInitPromise = (async () => {
+				const { McpService: McpServiceClass } = await import('./McpService');
+				this.mcpService = new McpServiceClass(this.output);
+				await this.mcpService.initialize();
+			})();
+		}
+
+		await this.mcpInitPromise;
+		return this.mcpService;
 	}
 
 	public async getStatus() {
@@ -316,8 +320,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 	public getMcpStatus() {
 		return {
 			enabled: vscode.workspace.getConfiguration('githubCopilotApi.mcp').get<boolean>('enabled', true),
-			servers: this.mcpService.getConnectedServers(),
-			tools: this.mcpService.getTools()
+			servers: this.mcpService?.getConnectedServers() ?? [],
+			tools: this.mcpService?.getTools() ?? []
 		};
 	}
 
@@ -771,8 +775,11 @@ export class CopilotApiGateway implements vscode.Disposable {
 	public async toggleMcp(enabled: boolean): Promise<void> {
 		this.suppressRestart = true;
 		await vscode.workspace.getConfiguration('githubCopilotApi.mcp').update('enabled', enabled, vscode.ConfigurationTarget.Global);
-		await this.mcpService.refreshServers();
-		this.config.mcpEnabled = enabled; // Update local config
+		if (enabled) {
+			const mcp = await this.ensureMcpService();
+			await mcp?.refreshServers();
+		}
+		this.config.mcpEnabled = enabled;
 		this.suppressRestart = false;
 	}
 
@@ -808,6 +815,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 		if (this.disposed) {
 			return;
 		}
+
+		// Start intervals only when server starts (deferred from constructor)
+		this.startStatsUpdater();
+		this.startDomainCacheRefresh();
 
 		await this.stop();
 		this.config = getServerConfig();
@@ -913,26 +924,30 @@ export class CopilotApiGateway implements vscode.Disposable {
 			this.logError('HTTP server error', error);
 		});
 
-		this.wsServer = new WebSocketServer({ noServer: true });
-		this.wsServer.on('connection', (socket: WebSocket) => this.handleWebSocketConnection(socket));
-		this.wsServer.on('error', (error: Error) => {
-			this.logError('WebSocket server error', error);
-		});
+		// Only load WebSocket server when enabled
+		if (this.config.enableWebSocket) {
+			const { WebSocketServer: WSServer } = await import('ws');
+			this.wsServer = new WSServer({ noServer: true });
+			this.wsServer.on('connection', (socket: WebSocket) => this.handleWebSocketConnection(socket));
+			this.wsServer.on('error', (error: Error) => {
+				this.logError('WebSocket server error', error);
+			});
 
-		this.httpServer.on('upgrade', (request, socket, head) => {
-			if (!request.url) {
-				socket.destroy();
-				return;
-			}
-			const url = this.buildUrl(request.url);
-			if (url.pathname === '/v1/realtime' && this.config.enableWebSocket) {
-				this.wsServer?.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-					this.wsServer?.emit('connection', ws, request);
-				});
-			} else {
-				socket.destroy();
-			}
-		});
+			this.httpServer.on('upgrade', (request, socket, head) => {
+				if (!request.url) {
+					socket.destroy();
+					return;
+				}
+				const url = this.buildUrl(request.url);
+				if (url.pathname === '/v1/realtime') {
+					this.wsServer?.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+						this.wsServer?.emit('connection', ws, request);
+					});
+				} else {
+					socket.destroy();
+				}
+			});
+		}
 
 		await new Promise<void>((resolve, reject) => {
 			const onError = (error: Error) => {
@@ -1040,7 +1055,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		for (const disposable of this.disposables.splice(0)) {
 			disposable.dispose();
 		}
-		await this.mcpService.dispose();
+		await this.mcpService?.dispose();
 		this._onDidChangeStatus.dispose();
 		this.logInfo('API Gateway shut down successfully.');
 	}
@@ -2148,8 +2163,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 		const model = this.resolveModel(payload?.model);
 		const baseTools = this.normalizeTools(payload?.tools || payload?.functions) || [];
 
-		// Fetch MCP Tools
-		const mcpTools = await this.mcpService.getAllTools();
+		// Fetch MCP Tools (lazy load if available)
+		const mcpService = await this.ensureMcpService();
+		const mcpTools = mcpService ? await mcpService.getAllTools() : [];
 		const mappedMcpTools: vscode.LanguageModelChatTool[] = mcpTools.map(t => ({
 			name: `mcp_${t.serverName}_${t.name}`,
 			description: t.description || `Tool from MCP server ${t.serverName}`,
@@ -2206,7 +2222,11 @@ export class CopilotApiGateway implements vscode.Disposable {
 						const toolName = parts.slice(2).join('_');
 
 						try {
-							const toolResult = await this.mcpService.callTool(serverName, toolName, tc.arguments);
+							const mcp = await this.ensureMcpService();
+							if (!mcp) {
+								throw new Error('MCP service not available');
+							}
+							const toolResult = await mcp.callTool(serverName, toolName, tc.arguments);
 							messages.push({
 								role: 'tool',
 								tool_call_id: `call_${randomUUID().slice(0, 24)}`, // Best effort ID mapping
@@ -2258,7 +2278,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		// Check if the FINAL iteration requested tool calls (that we didn't handle, i.e. client tools)
 		if (result.toolCalls && result.toolCalls.length > 0) {
 			return {
-				id: `chatcmpl- ${randomUUID()}`,
+				id: `chatcmpl-${randomUUID()}`,
 				object: 'chat.completion',
 				created,
 				model,
@@ -2293,7 +2313,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 		// Normal text response
 		return {
-			id: `chatcmpl - ${randomUUID()}`,
+			id: `chatcmpl-${randomUUID()}`,
 			object: 'chat.completion',
 			created,
 			model,
@@ -2736,12 +2756,6 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 	private resolveModel(model: unknown): string {
 		if (typeof model === 'string' && model.trim()) {
-			const requestedModel = model.trim().toLowerCase();
-			// Check for alias first
-			const aliasedModel = MODEL_ALIASES[requestedModel];
-			if (aliasedModel) {
-				return aliasedModel;
-			}
 			return model.trim();
 		}
 		return this.config.defaultModel;

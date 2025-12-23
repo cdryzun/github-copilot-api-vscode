@@ -37,6 +37,11 @@ async function main() {
 		outfile: 'dist/extension.js',
 		external: ['vscode'],
 		logLevel: 'silent',
+		// Performance optimizations
+		treeShaking: true,
+		metafile: true,
+		// Remove console.log in production for smaller bundle
+		pure: production ? ['console.log'] : [],
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,

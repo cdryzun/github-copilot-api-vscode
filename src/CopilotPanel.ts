@@ -390,7 +390,11 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
         const statusColor = isRunning ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
         const statusText = isRunning ? 'Running' : 'Stopped';
         const protocol = status.isHttps ? 'https' : 'http';
-        const url = `${protocol}://${status.config.host}:${status.config.port}`;
+        // Show actual LAN IP instead of 0.0.0.0
+        const displayHost = (status.config.host === '0.0.0.0' && status.networkInfo?.localIPs?.length)
+            ? status.networkInfo.localIPs[0]
+            : status.config.host;
+        const url = `${protocol}://${displayHost}:${status.config.port}`;
 
         // Get stats for charts
         const stats = status.stats || { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0, requestsPerMinute: 0, avgLatencyMs: 0 };
@@ -551,8 +555,12 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
         const statusColor = isRunning ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
         const statusText = isRunning ? 'Running' : 'Stopped';
         const protocol = status.isHttps ? 'https' : 'http';
-        const url = `${protocol}://${config.host}:${config.port}`;
         const networkInfo = status.networkInfo;
+        // Show actual LAN IP instead of 0.0.0.0
+        const displayHost = (config.host === '0.0.0.0' && networkInfo?.localIPs?.length)
+            ? networkInfo.localIPs[0]
+            : config.host;
+        const url = `${protocol}://${displayHost}:${config.port}`;
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -673,9 +681,10 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
             <div>
                 <h1>Copilot API Dashboard</h1>
                 <p>Monitor and control your local Copilot API Gateway.</p>
-                <div style="margin-top: 8px; font-size: 13px; opacity: 0.9; font-family: var(--vscode-editor-font-family);">
+                <div style="margin-top: 8px; font-size: 13px; opacity: 0.9; font-family: var(--vscode-editor-font-family); display: flex; align-items: center; gap: 8px;">
                     <span style="opacity: 0.6;">Running on:</span> 
-                    <strong>http://${config.host}:${config.port}</strong>
+                    <strong id="server-url">${url}</strong>
+                    <button id="btn-copy-url" class="secondary" style="padding: 4px 8px; font-size: 11px; min-width: auto;" title="Copy URL">📋 Copy</button>
                 </div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -1728,6 +1737,15 @@ if response.choices[0].message.tool_calls:
 
         document.getElementById('btn-settings').onclick = function() {
             vscode.postMessage({ type: 'showControls' });
+        };
+
+        document.getElementById('btn-copy-url').onclick = function() {
+            var url = document.getElementById('server-url').innerText;
+            navigator.clipboard.writeText(url).then(function() {
+                var btn = document.getElementById('btn-copy-url');
+                btn.innerText = '✅ Copied!';
+                setTimeout(function() { btn.innerText = '📋 Copy'; }, 1500);
+            });
         };
 
         document.getElementById('toggle-http').onchange = function() {

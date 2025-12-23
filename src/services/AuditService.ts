@@ -37,14 +37,25 @@ export class AuditService {
     private writeQueue: AuditEntry[] = [];
     private flushInterval: NodeJS.Timeout | undefined;
     private readonly FLUSH_MS = 2000; // Flush every 2 seconds
+    private context: vscode.ExtensionContext;
+    // Cached lifetime stats to avoid reading 365 files on startup
+    private cachedLifetimeStats: { totalRequests: number, totalTokensIn: number, totalTokensOut: number } | null = null;
+    // Cached daily stats with TTL to avoid re-reading files on each sidebar render
+    private dailyStatsCache: { data: DailyStats[], timestamp: number, days: number } | null = null;
+    private readonly DAILY_STATS_CACHE_TTL_MS = 30000; // 30 seconds
 
     constructor(context: vscode.ExtensionContext) {
+        this.context = context;
         // Store logs in globalStorage/audit_logs
         this.storageDir = path.join(context.globalStorageUri.fsPath, 'audit_logs');
-        this.ensureStorageDir();
-        this.startPeriodicFlush();
+        // Initialize asynchronously to not block startup
+        this.initAsync();
+    }
 
-        // Run cleanup on startup
+    private async initAsync() {
+        await this.ensureStorageDir();
+        this.startPeriodicFlush();
+        // Run cleanup in background
         this.cleanupOldLogs().catch(err => console.error('Failed to cleanup old logs:', err));
     }
 
@@ -84,14 +95,29 @@ export class AuditService {
         }
     }
 
-    private ensureStorageDir() {
-        if (!fs.existsSync(this.storageDir)) {
-            fs.mkdirSync(this.storageDir, { recursive: true });
+    private async ensureStorageDir() {
+        try {
+            await fs.promises.mkdir(this.storageDir, { recursive: true });
+        } catch (err: any) {
+            // Ignore EEXIST - directory already exists
+            if (err.code !== 'EEXIST') {
+                console.error('Failed to create audit storage dir:', err);
+            }
         }
     }
 
     public async logRequest(entry: AuditEntry): Promise<void> {
         this.writeQueue.push(entry);
+        // Update cached stats incrementally
+        if (this.cachedLifetimeStats) {
+            this.cachedLifetimeStats.totalRequests++;
+            this.cachedLifetimeStats.totalTokensIn += entry.tokensIn || 0;
+            this.cachedLifetimeStats.totalTokensOut += entry.tokensOut || 0;
+            // Persist to globalState periodically (every 10 requests)
+            if (this.cachedLifetimeStats.totalRequests % 10 === 0) {
+                void this.context.globalState.update('lifetimeStats', this.cachedLifetimeStats);
+            }
+        }
     }
 
     private startPeriodicFlush() {
@@ -135,6 +161,13 @@ export class AuditService {
     }
 
     public async getDailyStats(lastDays: number = 30): Promise<DailyStats[]> {
+        // Check cache first
+        if (this.dailyStatsCache &&
+            this.dailyStatsCache.days === lastDays &&
+            Date.now() - this.dailyStatsCache.timestamp < this.DAILY_STATS_CACHE_TTL_MS) {
+            return this.dailyStatsCache.data;
+        }
+
         const stats: DailyStats[] = [];
         const today = new Date();
 
@@ -144,7 +177,16 @@ export class AuditService {
             const dateStr = d.toISOString().split('T')[0];
             const filePath = path.join(this.storageDir, `audit-${dateStr}.jsonl`);
 
-            if (fs.existsSync(filePath)) {
+            // Use async file check instead of sync
+            let fileExists = false;
+            try {
+                await fs.promises.access(filePath);
+                fileExists = true;
+            } catch {
+                fileExists = false;
+            }
+
+            if (fileExists) {
                 try {
                     const content = await fs.promises.readFile(filePath, 'utf8');
                     const lines = content.trim().split('\n');
@@ -198,8 +240,10 @@ export class AuditService {
             }
         }
 
-        // Return sorted by date ascending
-        return stats.sort((a, b) => a.date.localeCompare(b.date));
+        // Cache result and return sorted by date ascending
+        const result = stats.sort((a, b) => a.date.localeCompare(b.date));
+        this.dailyStatsCache = { data: result, timestamp: Date.now(), days: lastDays };
+        return result;
     }
 
     public async getLogEntries(page: number = 1, pageSize: number = 10): Promise<{ total: number, entries: AuditEntry[] }> {
@@ -254,15 +298,29 @@ export class AuditService {
     }
 
     public async getLifetimeStats(): Promise<{ totalRequests: number, totalTokensIn: number, totalTokensOut: number }> {
-        // Simple implementation: aggregate from getDailyStats(365)
-        // In a real DB, this would be a simple query.
-        const dailyStats = await this.getDailyStats(365);
+        // Return cached stats if available (set from globalState on first call)
+        if (this.cachedLifetimeStats) {
+            return this.cachedLifetimeStats;
+        }
 
-        return dailyStats.reduce((acc, day) => ({
+        // Try to load from globalState first (fast path)
+        const cached = this.context.globalState.get<{ totalRequests: number, totalTokensIn: number, totalTokensOut: number }>('lifetimeStats');
+        if (cached) {
+            this.cachedLifetimeStats = cached;
+            return cached;
+        }
+
+        // Fallback: calculate from files (only happens once ever, or after reset)
+        const dailyStats = await this.getDailyStats(365);
+        this.cachedLifetimeStats = dailyStats.reduce((acc, day) => ({
             totalRequests: acc.totalRequests + day.totalRequests,
             totalTokensIn: acc.totalTokensIn + day.tokensIn,
             totalTokensOut: acc.totalTokensOut + day.tokensOut
         }), { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0 });
+
+        // Cache in globalState for next startup
+        await this.context.globalState.update('lifetimeStats', this.cachedLifetimeStats);
+        return this.cachedLifetimeStats;
     }
 
     public dispose() {

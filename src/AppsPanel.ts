@@ -7,7 +7,7 @@
  */
 
 import * as vscode from 'vscode';
-import { appRegistry, getAppsGroupedByCategory, categoryMetadata, getAppById } from './apps/registry';
+import { appRegistry, getAppsGroupedByCategory, categoryMetadata, getAppById, getAppByIdAsync, getAppMetadataById, type AppMetadata } from './apps/registry';
 import { appService } from './apps/AppService';
 import { projectManager } from './apps/ProjectManager';
 import { AppDefinition, AppsHubPreferences, SavedProject } from './apps/types';
@@ -267,10 +267,18 @@ export class AppsPanel {
     /**
      * Open a specific app in its own tab
      */
-    public static openApp(appId: string): void {
-        const app = getAppById(appId);
-        if (!app) {
+    public static async openApp(appId: string): Promise<void> {
+        // Get metadata first for quick panel title
+        const metadata = getAppMetadataById(appId);
+        if (!metadata) {
             vscode.window.showErrorMessage(`App "${appId}" not found`);
+            return;
+        }
+
+        // Load full app definition asynchronously
+        const app = await getAppByIdAsync(appId);
+        if (!app) {
+            vscode.window.showErrorMessage(`Failed to load app "${appId}"`);
             return;
         }
 
@@ -1982,7 +1990,7 @@ export const appRegistry: AppDefinition[] = [
     /**
      * Render an app card for the hub
      */
-    private static renderAppCard(app: AppDefinition, isFavorite: boolean): string {
+    private static renderAppCard(app: AppMetadata | AppDefinition, isFavorite: boolean): string {
         // Truncate description to ~60 chars for compact cards
         const shortDesc = app.description.length > 60
             ? app.description.substring(0, 60) + '...'

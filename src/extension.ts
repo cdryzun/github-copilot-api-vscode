@@ -23,21 +23,24 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
 	);
 
-	// Initialize Apps Hub
-	AppsPanel.initialize(context);
+	// Defer non-critical initialization to improve startup performance
+	setImmediate(() => {
+		// Initialize Apps Hub (deferred)
+		AppsPanel.initialize(context);
 
-	// Register Apps Hub sidebar provider
-	const appsHubSidebarProvider = new AppsHubSidebarProvider(context.extensionUri);
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(AppsHubSidebarProvider.viewType, appsHubSidebarProvider)
-	);
+		// Register Apps Hub sidebar provider (deferred)
+		const appsHubSidebarProvider = new AppsHubSidebarProvider(context.extensionUri);
+		context.subscriptions.push(
+			vscode.window.registerWebviewViewProvider(AppsHubSidebarProvider.viewType, appsHubSidebarProvider)
+		);
 
-	// Register Apps Hub command
-	context.subscriptions.push(
-		vscode.commands.registerCommand('github-copilot-api-vscode.openAppsHub', () => {
-			AppsPanel.openAppsHub();
-		})
-	);
+		// Register Apps Hub command (deferred)
+		context.subscriptions.push(
+			vscode.commands.registerCommand('github-copilot-api-vscode.openAppsHub', () => {
+				AppsPanel.openAppsHub();
+			})
+		);
+	});
 
 	// Status Bar & Notifications
 	const updateStatusBar = async () => {
@@ -89,8 +92,13 @@ export function activate(context: vscode.ExtensionContext) {
 		if (status.running && !wasRunning) {
 			const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
 			if (config.get<boolean>('showNotifications', true)) {
+				// Show actual LAN IP instead of 0.0.0.0 when bound to all interfaces
+				const displayHost = (status.config.host === '0.0.0.0' && status.networkInfo?.localIPs?.length)
+					? status.networkInfo.localIPs[0]
+					: status.config.host;
+				const protocol = status.isHttps ? 'https' : 'http';
 				const selection = await vscode.window.showInformationMessage(
-					`GitHub Copilot API Server started at http://${status.config.host}:${status.config.port}`,
+					`GitHub Copilot API Server started at ${protocol}://${displayHost}:${status.config.port}`,
 					'Open Dashboard'
 				);
 				if (selection === 'Open Dashboard') {
