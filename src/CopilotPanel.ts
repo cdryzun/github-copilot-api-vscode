@@ -1091,10 +1091,15 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
                     <p>Compatible with Gemini SDKs. Supports <code>generateContent</code> and <code>streamGenerateContent</code>.</p>
                 </div>
                 <div class="doc-card">
+                    <h4><span>🦙</span> Llama <code>/llama/v1</code></h4>
+                    <p>Compatible with Meta Llama SDKs. Supports <code>chat/completions</code> with streaming.</p>
+                </div>
+                <div class="doc-card">
                     <h4><span>🔌</span> MCP Tools</h4>
                     <p>MCP tools are automatically prefixed with <code>mcp_{server}_{tool}</code>. The gateway handles execution automatically in non-streaming mode.</p>
                 </div>
             </div>
+
             <div class="actions" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 16px;">
                 <a href="http://${config.host}:${config.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcdd Swagger UI</a>
                 <a href="http://${config.host}:${config.port}/openapi.json" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcc4 OpenAPI JSON</a>
@@ -1512,7 +1517,20 @@ console.log(response.choices[0].message.tool_calls);</pre>
     "messages": [{"role": "user", "content": "Hello Claude!"}]
   }'</pre>
 
+                    <h4 style="color: var(--vscode-textLink-foreground);">🦙 Llama Endpoint (Meta)</h4>
+                    <pre style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/llama/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ],
+    "max_completion_tokens": 1024
+  }'</pre>
+
                     <h4 style="color: var(--vscode-textLink-foreground);">🔧 Function Calling</h4>
+
                     <pre style="background: var(--vscode-textBlockQuote-background); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 11px;">curl http://${config.host}:${config.port}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{

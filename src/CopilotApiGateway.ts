@@ -141,10 +141,44 @@ export interface GoogleGenerateContentResponse {
 		totalTokenCount: number;
 	};
 }
+
+// --- Llama API Interfaces ---
+export interface LlamaMessageRequest {
+	model: string;
+	messages: { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | { type: 'text'; text: string }[] }[];
+	temperature?: number;
+	top_p?: number;
+	max_tokens?: number;
+	max_completion_tokens?: number; // Llama uses this instead of max_tokens
+	stream?: boolean;
+	stop?: string | string[];
+	tools?: any[];
+	tool_choice?: string | { type: string; function: { name: string } };
+	response_format?: { type: 'text' | 'json_object' | 'json_schema'; json_schema?: any };
+}
+
+export interface LlamaMessageResponse {
+	id: string;
+	object: 'chat.completion';
+	created: number;
+	model: string;
+	choices: {
+		index: number;
+		message: { role: 'assistant'; content: string; tool_calls?: any[] };
+		finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter';
+	}[];
+	usage: {
+		prompt_tokens: number;
+		completion_tokens: number;
+		total_tokens: number;
+	};
+}
+
 type ChatEndpointContext = {
 	source: 'http' | 'websocket'
-	endpoint: '/v1/chat/completions' | '/v1/completions'
+	endpoint: '/v1/chat/completions' | '/v1/completions' | '/llama/v1/chat/completions'
 }
+
 
 export class CopilotApiGateway implements vscode.Disposable {
 	private httpServer: ReturnType<typeof createServer> | undefined;
@@ -1439,7 +1473,35 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
+		// Llama API (OpenAI-compatible format with Llama branding)
+		// Since Llama uses OpenAI-compatible format, we reuse processChatCompletion
+		if (req.method === 'POST' && url.pathname === '/llama/v1/chat/completions') {
+			const body = await this.readJsonBody(req);
+			// Handle max_completion_tokens (Llama) as max_tokens (OpenAI)
+			if (body?.max_completion_tokens && !body?.max_tokens) {
+				body.max_tokens = body.max_completion_tokens;
+			}
+
+			if (body?.stream === true) {
+				await this.processStreamingChatCompletion(body, req, res, requestId, requestStart);
+			} else {
+				const response = await this.processChatCompletion(body, { source: 'http', endpoint: '/llama/v1/chat/completions' }) as any;
+				this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
+					requestPayload: body,
+					responsePayload: response,
+					tokensIn: response?.usage?.prompt_tokens,
+					tokensOut: response?.usage?.completion_tokens,
+					model: body?.model,
+					requestHeaders: req.headers,
+					responseHeaders: res.getHeaders()
+				});
+				this.sendJson(res, 200, response);
+			}
+			return;
+		}
+
 		// Embeddings (not supported)
+
 		if (req.method === 'POST' && url.pathname === '/v1/embeddings') {
 			throw new ApiError(501, 'Embeddings are not supported by Copilot.', 'not_implemented', 'embeddings_not_supported');
 		}
@@ -2055,7 +2117,28 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}).join(' ');
 		}).join('\n');
 
-		const text = await this.runWithConcurrency(() => this.invokeCopilot(promptStr));
+
+
+		// Use sendRequest directly to preserve message structure instead of flattening to string
+		const text = await this.runWithConcurrency(async () => {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+			const lmModel = copilotModels[0];
+			const result = await lmModel.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
+
+			let output = '';
+			for await (const part of result.stream) {
+				if (part instanceof vscode.LanguageModelTextPart) {
+					output += part.value;
+				}
+			}
+			return output;
+		});
+
+		// Count tokens
+
 
 		// Count tokens
 		let inputTokens = 0;
@@ -2117,7 +2200,28 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}).join(' ');
 		}).join('\n');
 
-		const text = await this.runWithConcurrency(() => this.invokeCopilot(promptStr));
+
+
+		// Use sendRequest directly to preserve message structure instead of flattening to string
+		const text = await this.runWithConcurrency(async () => {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+			const lmModel = copilotModels[0];
+			const result = await lmModel.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
+
+			let output = '';
+			for await (const part of result.stream) {
+				if (part instanceof vscode.LanguageModelTextPart) {
+					output += part.value;
+				}
+			}
+			return output;
+		});
+
+		// Count tokens
+
 
 		// Count tokens
 		let inputTokens = 0;
@@ -2154,6 +2258,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 	}
 
 	private async processChatCompletion(payload: any, context: ChatEndpointContext): Promise<Record<string, unknown>> {
+
+
 		let messages = this.normalizeChatMessages(payload);
 		messages = this.injectSystemPrompt(messages);
 
@@ -2994,15 +3100,17 @@ export class CopilotApiGateway implements vscode.Disposable {
 				{ name: 'Completions', description: 'Text completion endpoints' },
 				{ name: 'Anthropic', description: 'Anthropic Messages API compatible endpoints' },
 				{ name: 'Google', description: 'Google Generative AI API compatible endpoints' },
+				{ name: 'Llama', description: 'Meta Llama API compatible endpoints' },
 				{ name: 'Models', description: 'Model information' },
 				{ name: 'Utilities', description: 'Utility endpoints' }
 			],
+
 			paths: {
 				'/v1/chat/completions': {
 					post: {
 						tags: ['Chat'],
 						summary: 'Create chat completion',
-						description: 'Creates a chat completion for the given messages. Supports streaming, function calling (tools), JSON mode, and more.',
+						description: 'Creates a chat completion for the given messages using the OpenAI format.\n\n**Supported Features:**\n- **Streaming:** Server-Sent Events (SSE)\n- **Function Calling:** Tool use with `tools` and `tool_choice`\n- **JSON Mode:** Structured output with `response_format`\n- **Token usage:** Detailed usage statistics',
 						operationId: 'createChatCompletion',
 						requestBody: {
 							required: true,
@@ -3211,7 +3319,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 							required: true,
 							content: {
 								'application/json': {
-									schema: { $ref: '#/components/schemas/AnthropicMessageRequest' }
+									schema: { $ref: '#/components/schemas/AnthropicMessageRequest' },
+									example: {
+										model: 'claude-3-5-sonnet-20240620',
+										max_tokens: 1024,
+										messages: [
+											{ role: 'user', content: 'Hello, Claude' }
+										]
+									}
 								}
 							}
 						},
@@ -3238,7 +3353,19 @@ export class CopilotApiGateway implements vscode.Disposable {
 							required: true,
 							content: {
 								'application/json': {
-									schema: { $ref: '#/components/schemas/GoogleGenerateContentRequest' }
+									schema: { $ref: '#/components/schemas/GoogleGenerateContentRequest' },
+									example: {
+										contents: [
+											{
+												role: 'user',
+												parts: [{ text: 'Write a story about a magic backpack' }]
+											}
+										],
+										generationConfig: {
+											temperature: 0.9,
+											maxOutputTokens: 200
+										}
+									}
 								}
 							}
 						},
@@ -3275,7 +3402,34 @@ export class CopilotApiGateway implements vscode.Disposable {
 						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
 					}
 				},
+				'/llama/v1/chat/completions': {
+					post: {
+						tags: ['Llama'],
+						summary: 'Llama Chat Completions',
+						description: 'Create a chat completion using the Llama-compatible API format.\n\nCompatible with `llama-api` Python/JS SDKs. Supports standard OpenAI parameters including `max_completion_tokens`.',
+						operationId: 'llamaChatCompletions',
+						requestBody: {
+							required: true,
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/LlamaMessageRequest' }
+								}
+							}
+						},
+						responses: {
+							'200': {
+								description: 'Successful response',
+								content: {
+									'application/json': { schema: { $ref: '#/components/schemas/LlamaMessageResponse' } },
+									'text/event-stream': { description: 'OpenAI-style SSE event stream for streaming responses' }
+								}
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
 				'/health': {
+
 					get: {
 						tags: ['Utilities'],
 						summary: 'Health check',
@@ -3652,11 +3806,71 @@ export class CopilotApiGateway implements vscode.Disposable {
 								}
 							}
 						}
+					},
+					LlamaMessageRequest: {
+						type: 'object',
+						required: ['model', 'messages'],
+						properties: {
+							model: { type: 'string', description: 'Model ID to use' },
+							messages: {
+								type: 'array',
+								description: 'List of messages in the conversation',
+								items: {
+									type: 'object',
+									required: ['role', 'content'],
+									properties: {
+										role: { type: 'string', enum: ['system', 'user', 'assistant', 'tool'] },
+										content: { type: 'string' }
+									}
+								}
+							},
+							temperature: { type: 'number', minimum: 0, maximum: 2 },
+							max_tokens: { type: 'integer', description: 'Maximum tokens to generate' },
+							max_completion_tokens: { type: 'integer', description: 'Llama-style max tokens parameter' },
+							stream: { type: 'boolean', default: false },
+							top_p: { type: 'number' },
+							stop: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }
+						}
+					},
+					LlamaMessageResponse: {
+						type: 'object',
+						properties: {
+							id: { type: 'string' },
+							object: { type: 'string', example: 'chat.completion' },
+							created: { type: 'integer' },
+							model: { type: 'string' },
+							choices: {
+								type: 'array',
+								items: {
+									type: 'object',
+									properties: {
+										index: { type: 'integer' },
+										message: {
+											type: 'object',
+											properties: {
+												role: { type: 'string', example: 'assistant' },
+												content: { type: 'string' }
+											}
+										},
+										finish_reason: { type: 'string', enum: ['stop', 'length', 'tool_calls', 'content_filter'] }
+									}
+								}
+							},
+							usage: {
+								type: 'object',
+								properties: {
+									prompt_tokens: { type: 'integer' },
+									completion_tokens: { type: 'integer' },
+									total_tokens: { type: 'integer' }
+								}
+							}
+						}
 					}
 				}
 			}
 		};
 	}
+
 
 	private sendError(res: ServerResponse, error: ApiError): void {
 		const status = error.status ?? 500;

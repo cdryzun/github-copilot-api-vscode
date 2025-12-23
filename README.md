@@ -5,7 +5,8 @@
 <h1 align="center">GitHub Copilot API Gateway</h1>
 
 <p align="center">
-  <strong>Transform your GitHub Copilot subscription into a complete AI development platform.</strong>
+  <strong>Unlock the full potential of your GitHub Copilot subscription.</strong><br>
+  Expose Copilot's models via standard APIs compatible with OpenAI, Anthropic, Google, and Llama.
 </p>
 
 <p align="center">
@@ -21,389 +22,276 @@
 </p>
 
 <p align="center">
+  <a href="#-universal-api-gateway">Universal API Gateway</a> •
+  <a href="#-security--controls">Security & Controls</a> •
+  <a href="#-api-endpoints">API Endpoints</a> •
   <a href="#-enterprise-apps-hub">Apps Hub</a> •
-  <a href="#-api-gateway">API Gateway</a> •
-  <a href="#-getting-started">Getting Started</a> •
-  <a href="#-configuration">Configuration</a> •
-  <a href="#-integrations">Integrations</a>
+  <a href="#-getting-started">Getting Started</a>
 </p>
 
 ---
 
-## Why This Extension?
+## 🌐 Universal API Gateway
 
-**GitHub Copilot API Gateway** is more than just an HTTP server—it's a **complete AI development platform** that maximizes your Copilot subscription:
+**GitHub Copilot API Gateway** acts as a bridge between your local development environment and GitHub Copilot. It starts a local HTTP server that standardizes communication, allowing you to use Copilot with **any AI SDK or tool**.
 
-| What You Get | Without This Extension | With This Extension |
-|--------------|----------------------|---------------------|
-| **AI Apps** | None | 30+ enterprise-grade apps built into VS Code |
-| **API Access** | None | Full OpenAI, Anthropic, Google API compatibility |
-| **External Tools** | Limited | LangChain, AutoGPT, CrewAI, and 50+ frameworks |
-| **MCP Support** | None | Connect any Model Context Protocol server |
-| **Jira Integration** | None | Auto-fetch issue details into any app |
-| **Cost** | $10/month (Copilot only) | $10/month (everything included) |
+### One Subscription, Any Model
 
----
+Why pay for separate API keys? Use your existing Copilot subscription to power tools that expect:
+- **OpenAI** (GPT Family)
+- **Anthropic** (Claude Family)
+- **Google** (Gemini Family)
+- **Meta** (Llama Family)
 
-## 🎯 Enterprise Apps Hub
+### Seamless Compatibility
 
-**Access powerful AI apps directly in VS Code—no external tools needed.**
-
-Click **📦 Open Apps Hub** in the Copilot API sidebar to launch:
-
-![Enterprise Apps Hub](Apps.png)
-
-### Featured Apps
-
-| Category | Apps |
-|----------|------|
-| 🎭 **QA & Testing** | Playwright Generator, Test Case Generator, Bug Report Writer, Accessibility Checker |
-| 👥 **Leadership** | 1:1 Meeting Prep, Performance Review Writer, Team Feedback Generator |
-| 💻 **Developer** | Code Review, Regex Generator, SQL Query Builder, API Doc Writer |
-| 🎮 **Games** | Trivia Showdown, Story Chain, Caption Battle, Debate Arena |
-| 🧘 **Wellness** | Rubber Duck Therapist, Gratitude Journal, Focus & Mindfulness |
-| 📝 **Productivity** | Email Composer, Slack Polisher, Meeting Notes to Actions |
-
-### 🔗 Jira Integration (NEW!)
-
-**Auto-fetch Jira issue details** into any app:
-
-1. Click **⚙️ JIRA Configuration** in Apps Hub
-2. Enter your Jira URL, email, and API token
-3. In apps like Playwright Generator or Test Case Generator, enter a Jira Issue ID
-4. Issue summary, description, and acceptance criteria are automatically fetched as context!
-
-### 🎭 Playwright Script Generator
-
-The flagship app that generates **production-ready Playwright test projects**:
-
-- **Multi-Language Support** — TypeScript, JavaScript, or Python
-- **Browser Selection** — Google Chrome or Microsoft Edge
-- **File Attachments** — Upload Excel, Word, TXT, or Markdown files with test steps
-- **Model Selection** — Choose from all available VS Code language models
-- **Complete Project Output** — Creates `package.json`, `playwright.config.ts`, and test files
-- **One-Click Setup** — Ready-to-run commands for `npm install` and `npx playwright test`
-
-```
-📁 my-playwright-tests/
-├── package.json           # Dependencies configured
-├── playwright.config.ts   # Browser & reporter settings
-└── tests/
-    └── test.spec.ts       # Your generated tests
-```
-
----
-
-## 🌐 API Gateway
-
-**Expose GitHub Copilot as a local HTTP server compatible with OpenAI, Anthropic, and Google SDKs.**
-
-### Multi-Provider Compatibility
-
-| Provider | Endpoint | Compatible SDKs |
-|----------|----------|-----------------|
-| **OpenAI** | `/v1/chat/completions` | openai-python, openai-node, and any OpenAI-compatible client |
-| **Anthropic** | `/v1/messages` | anthropic-sdk, Claude integrations |
-| **Google Gemini** | `/v1beta/models/:model:generateContent` | google-generativeai, Vertex AI clients |
-
-All endpoints support **streaming**, **function calling**, and **tool use**.
-
-### Interactive API Documentation
-
-Full Swagger UI with try-it-out capabilities:
-
-![Swagger API Documentation](Swagger.png)
-
-Access at `http://127.0.0.1:3030/docs` when the server is running.
-
----
-
-## ⚡ Performance & Optimizations (v0.0.13)
-
-Major performance improvements have been implemented to ensure instant startup and low resource usage:
-
-- **🚀 Instant Startup**: Lazy-loading and deferred initialization means the extension activates 300ms faster.
-- **💾 Cached Stats**: Audit logs are now cached incrementally, avoiding expensive file reads.
-- **🔌 Optimized WebSocket**: The `ws` module is now only loaded if you explicitly enable WebSocket support.
-- **🌐 Better LAN Support**: Dashboard now correctly displays your actual LAN IP (e.g., `192.168.1.x`) and provides a one-click Copy URL button.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-1. **VS Code** 1.95.0 or later
-2. **GitHub Copilot** extension (authenticated)
-3. **GitHub Copilot Chat** extension
-
-### Installation
-
-```bash
-# Install from VS Code Marketplace
-ext install suhaibbinyounis.github-copilot-api-vscode
-```
-
-Or search "GitHub Copilot API Gateway" in the VS Code Extensions panel.
-
-### Quick Start
-
-#### Using Apps Hub
-
-1. Open the **Copilot API** sidebar panel
-2. Click **📦 Open Apps Hub**
-3. Select any app (e.g., Playwright Generator)
-4. Fill in the form and click generate
-
-#### Using API Gateway
-
-1. Click **▶ Start Server** in the sidebar
-2. Server starts at `http://127.0.0.1:3030`
-3. Use any OpenAI-compatible client:
+Simply point your client to `http://127.0.0.1:3030` and it works like magic.
 
 ```python
+# Create an OpenAI client that talks to Copilot
 from openai import OpenAI
 
 client = OpenAI(
     base_url="http://127.0.0.1:3030/v1",
-    api_key="not-needed"  # Uses your Copilot subscription
+    api_key="copilot" # API key is ignored, your authenticated session is used
 )
 
 response = client.chat.completions.create(
     model="gpt-4o",
     messages=[{"role": "user", "content": "Hello!"}]
 )
-print(response.choices[0].message.content)
 ```
 
----
+### 🔓 What This Unlocks
+By standardizing Copilot as a local API, you instantly gain access to the entire AI ecosystem:
 
-## 🔧 Configuration
+| Category | Tools & Frameworks | Use Cases |
+| :--- | :--- | :--- |
+| **Orchestration** | **LangChain**, **LlamaIndex**, **Flowise** | Build RAG pipelines, chat with your PDF/Notion data. |
+| **Agents** | **AutoGPT**, **BabyAGI**, **CrewAI** | Run autonomous researchers and task-solvers locally. |
+| **Dev Tools** | **Cursor**, **Aider**, **Open Interpreter** | Pair program in your terminal or specialized IDEs. |
+| **No-Code** | **Bubble**, **Zapier** (via local tunnel) | Connect enterprise workflows to Copilot intelligence. |
 
-All settings are prefixed with `githubCopilotApi.`:
-
-### Server Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `server.host` | `127.0.0.1` | Bind address (`0.0.0.0` for LAN access) |
-| `server.port` | `3030` | HTTP server port |
-| `server.autoStart` | `false` | Start server when VS Code launches |
-| `server.apiKey` | — | Optional Bearer token for authentication |
-| `server.enableWebSocket` | `false` | Enable WebSocket at `/v1/realtime` (Disabled by default) |
-
-### Security Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `server.ipAllowlist` | `[]` | Restrict to specific IPs/CIDRs |
-| `server.rateLimitPerMinute` | `60` | Max requests per minute |
-| `server.maxConcurrentRequests` | `4` | Max parallel requests |
-| `server.maxConnectionsPerIp` | `10` | Connection limit per client |
-| `server.redactionPatterns` | `[]` | Regex patterns for data masking |
-
-### MCP Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `mcp.enabled` | `true` | Enable Model Context Protocol |
-| `mcp.servers` | `{}` | MCP server configurations |
+*"Turn your VS Code into the engine room for your AI experiments."*
 
 ---
 
-## 🔌 Integrations
+## 👥 Who Is This For?
 
-### AI Orchestration Frameworks
+Whether you're building the next unicorn or just learning to code, this extension levels the playing field.
 
-| Framework | Integration |
-|-----------|-------------|
-| **[LangChain](https://langchain.com)** | Set `base_url` to `http://127.0.0.1:3030/v1` |
-| **[LlamaIndex](https://llamaindex.ai)** | Configure OpenAI backend URL |
-| **[Haystack](https://haystack.deepset.ai)** | Use OpenAI generator with custom URL |
-| **[Semantic Kernel](https://github.com/microsoft/semantic-kernel)** | Point OpenAI connector to gateway |
+### 🎓 Students & Researchers (GitHub Student Developer Pack)
+**Don't let API costs block your learning.**
+If you have the **GitHub Student Developer Pack**, you likely have free access to Copilot. Use this gateway to build RAG apps, agents, and complex systems that usually require expensive API credits. Experiment purely without fear of a surprise bill.
 
-### Autonomous Agents
+### 💼 Professionals & Indie Hackers
+**Prototype at the speed of thought, for free.**
+Stop burning your personal credit card on API calls during development. Use your $10/mo Copilot subscription to power your entire dev, test, and staging environments. Build full-stack AI features locally before deploying to production.
 
-| Agent | Configuration |
-|-------|---------------|
-| **[AutoGPT](https://github.com/Significant-Gravitas/AutoGPT)** | Set `OPENAI_API_BASE` env variable |
-| **[CrewAI](https://crewai.com)** | Configure base URL in agent settings |
-| **[MetaGPT](https://github.com/geekan/MetaGPT)** | Use custom OpenAI endpoint |
+### 🏢 Enterprises & Teams
+**Secure, Compliant AI for every developer.**
+Leverage your existing GitHub Copilot Business/Enterprise licenses.
+- **Data Privacy:** Keep traffic local or within your VPN.
+- **No Shadow IT:** Developers don't need personal API keys to use advanced tools like Cursor or Aider.
+- **Unified Billing:** One subscription covers IDE completion *and* API-based workflows.
 
-### Development Tools
-
-| Tool | Integration |
-|------|-------------|
-| **[Continue](https://continue.dev)** | Configure OpenAI provider URL |
-| **[Aider](https://aider.chat)** | Use `--openai-api-base` flag |
-| **[Open Interpreter](https://openinterpreter.com)** | Set API base URL |
-
-### Example: LangChain with RAG
-
-```python
-from langchain_openai import ChatOpenAI
-from langchain_community.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-
-llm = ChatOpenAI(
-    base_url="http://127.0.0.1:3030/v1",
-    api_key="not-needed"
-)
-
-# Your RAG pipeline works with Copilot
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=vectorstore.as_retriever()
-)
-```
+*"This is the closest thing to having a private research lab on your laptop."*
 
 ---
 
-## 🛠 Model Context Protocol (MCP)
+---
 
-Extend Copilot with external tools and data sources.
+## 🔒 Security & Controls
+
+We understand that exposing an API requires strict control, especially in enterprise environments. This extension is built with **security-first principles**.
+
+### 🛡️ Access Control
+- **IP Allowlisting:** Restrict access to specific IP addresses or CIDR ranges (e.g., VPNs, local subnets).
+- **Bearer Authentication:** Enforce a custom API Key (`server.apiKey`) for all incoming requests.
+- **Connection Limits:** Set maximum concurrent connections per IP to prevent abuse.
+
+### 📝 Audit & Observability
+- **Full Audit Logging:** Every request and response is logged with timestamps, status codes, and latency.
+- **Data Redaction:** Sensitive information (API keys, PII) is automatically redacted from logs using configurable regex patterns.
+- **Live Dashboard:** Monitor real-time traffic, token usage, and error rates directly within VS Code.
+
+### ⚡ Performance Guardrails
+- **Rate Limiting:** Configurable requests-per-minute limits to prevent flooding.
+- **Payload Limits:** rigorous checks on request sizes to ensure stability.
+- **Optimized Core:** Built on a zero-dependency, high-performance Node.js HTTP server.
+
+---
+
+## 📚 API Endpoints
+
+The gateway provides fully compatible endpoints for major AI providers.
+
+| Provider | Endpoint | Method | Description |
+|----------|----------|--------|-------------|
+| **OpenAI** | `/v1/chat/completions` | `POST` | Full support for streaming, tools, and JSON mode. |
+| **OpenAI** | `/v1/models` | `GET` | List available models from your Copilot plan. |
+| **Anthropic** | `/v1/messages` | `POST` | Compatible with Anthropic SDKs (Claude). |
+| **Google** | `/v1beta/models/:model:generateContent` | `POST` | Compatible with Google Generative AI SDKs. |
+| **Llama** | `/llama/v1/chat/completions` | `POST` | Targeted support for Llama client libraries. |
+| **Utilities** | `/v1/usage` | `GET` | Retrieve server usage statistics. |
+| **Utilities** | `/docs` | `GET` | **Offline Swagger UI** for interactive testing. |
+
+### Interactive Documentation (Swagger UI)
+
+Explore the API offline at `http://127.0.0.1:3030/docs`.
+- **Try it out:** Send real requests from your browser.
+- **Schema Explorer:** View detailed request/response definitions.
+- **Secure:** Served locally, no external assets loaded.
+
+---
+
+## 🔌 Ecosystem & Integrations
+
+Build the future of AI with your favorite tools. The gateway is designed to be a drop-in replacement for any system expecting an OpenAI-compatible endpoint.
+
+### 🤖 AI Frameworks
+Connect seamlessly with industry-standard orchestration libraries:
+- **[LangChain](https://langchain.com):** Build RAG pipelines and agents. simply set `OPENAI_API_BASE=http://127.0.0.1:3030/v1`.
+- **[LlamaIndex](https://llamaindex.ai):** Index your private data and query it using Copilot's models.
+- **[Semantic Kernel](https://github.com/microsoft/semantic-kernel):** Integrate directly with Microsoft's enterprise-grade SDK.
+- **[Haystack](https://haystack.deepset.ai):** Create powerful search and Q&A systems.
+
+### 🛠️ Developer Tools
+Supercharge your CLI and editor workflows:
+- **[Cursor](https://cursor.sh) / [Zed](https://zed.dev):** Use Copilot as your backend model provider.
+- **[Aider](https://aider.chat):** The AI pair programmer in your terminal.
+- **[Continue](https://continue.dev):** Open-source AI code assistant.
+- **[Open Interpreter](https://openinterpreter.com):** Let language models run code on your computer.
+
+### 🧠 Autonomous Agents
+Power resource-intensive agent loops without breaking the bank:
+- **[AutoGPT](https://github.com/Significant-Gravitas/AutoGPT):** Run continuous autonomous tasks.
+- **[CrewAI](https://crewai.com):** Orchestrate teams of AI agents.
+- **[BabyAGI](https://github.com/yoheinakajima/babyagi):** Minimalist task management AI.
+
+*"If it speaks OpenAI, it works with Copilot API Gateway."*
+
+---
+
+## 🔮 Advanced Use Cases
+
+Go beyond simple chat. Unlock the advanced capabilities hidden in your subscription:
+
+### ⚡ Structure-Aware Generation
+Use **JSON Mode** to guarantee valid output for your applications. Perfect for:
+- Extracting data from unstructured text
+- Generating configuration files
+- Formatting API responses
+
+### 🛠️ Function Calling & Tools
+Give Copilot hands. Define custom functions that the model can "call" to perform actions:
+- Query database
+- Search the web
+- Execute Python scripts
+*Compatible with OpenAI Tool use specifications.*
+
+### 🌊 Real-Time Streaming
+Build responsive UIs with low-latency Server-Sent Events (SSE). Receive tokens as they are generated, just like the ChatGPT interface.
+
+
+
+---
+## 🎯 Bonus: Enterprise Apps Hub
+
+Included for free is the **Apps Hub**—a suite of 30+ AI-powered workflows integrated directly into VS Code.
+
+> **Why buy separate tools?** Your Copilot subscription can now generate tests, review code, and manage Jira.
+
+### Featured Workflows
+- **🎭 Playwright Generator:** Generate production-ready end-to-end tests from descriptions.
+- **🔗 Jira Integration:** Auto-fetch acceptance criteria to write code or tests.
+- **🐞 Bug Reporter:** Turn vague reports into structured, repro-ready tickets.
+- **📝 SQL Builder:** Write complex queries using natural language.
+
+Access these apps by clicking **"Open Apps Hub"** in the sidebar.
+
+---
+
+## � Getting Started
+
+### 1. Installation
+Install **GitHub Copilot API Gateway** from the VS Code Marketplace.
+*Requirements: VS Code 1.95+ and GitHub Copilot Chat extension.*
+
+### 2. Start the Server
+Click the **"Start Server"** button in the extension sidebar, or run the command `GitHub Copilot: Start API Server`.
+
+### 3. Usage & Network Configuration
+By default, the server is secure and only accessible from your local machine (`127.0.0.1`).
+
+**To share Copilot with your LAN (e.g., test on mobile, share with a colleague):**
+1. Open VS Code Settings.
+2. Search for `githubCopilotApi.server.host`.
+3. Change value from `127.0.0.1` to `0.0.0.0` (Listen on all interfaces).
+4. Your API is now accessible at `http://<YOUR-LAN-IP>:3030`.
+
+> 💡 **Tip:** Use the **IP Allowlist** feature to ensure only trusted devices on your network can connect.
 
 ### Configuration
-
-Add to your VS Code `settings.json`:
+Customize your experience in VS Code Settings (`githubCopilotApi.*`):
 
 ```json
 {
-  "githubCopilotApi.mcp.servers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/folder"]
-    },
-    "git": {
-      "command": "npx", 
-      "args": ["-y", "@modelcontextprotocol/server-git"]
-    }
-  }
+  "githubCopilotApi.server.port": 3030,
+  "githubCopilotApi.server.host": "127.0.0.1",
+  "githubCopilotApi.server.apiKey": "my-secret-token",
+  "githubCopilotApi.server.ipAllowlist": ["127.0.0.1", "192.168.1.0/24"]
 }
 ```
 
-### Built-in VS Code Tools
+---
 
-| Tool | Description |
-|------|-------------|
-| `vscode_read_file` | Read file contents from workspace |
-| `vscode_list_files` | List files matching a pattern |
-| `vscode_open_file` | Open file in editor at specific line |
-| `vscode_get_diagnostics` | Get errors and warnings |
-| `vscode_get_active_editor` | Get content of current file |
+## ❓ Frequently Asked Questions (FAQ)
+
+**Q: Can I use this to get free GPT-4 access?**
+A: This extension uses your *existing* GitHub Copilot subscription. If your plan includes GPT-4 (like most do), then yes, you can access GPT-4 programmatically without paying extra OpenAI API fees.
+
+**Q: Does this work with local LLMs like Ollama or LM Studio?**
+A: This extension *is* a local LLM server, but powered by GitHub's cloud. It is a perfect alternative to running heavy local models if your hardware is limited, offering cloud-quality performance (GPT-4o, Claude 3.5) with local-like control.
+
+**Q: How do I find my GitHub Copilot API Key?**
+A: You don't need to extract or hunt for a static API key! This extension handles the secure authentication handshake with GitHub automatically. Your local tools just need to talk to `http://127.0.0.1:3030`.
+
+**Q: Is this safe for enterprise use?**
+A: Yes. It runs entirely locally on your machine. No data is sent to any third-party server other than GitHub itself. You can enforce strict **IP Allowlisting** and **Audit Logging** to meet compliance requirements.
 
 ---
 
-## 📊 Dashboard & Observability
+## 🏆 Why Developers Choose This Gateway
 
-The built-in dashboard provides:
+| Feature | **Copilot API Gateway** | Local LLMs (Ollama) | Direct Cloud APIs |
+| :--- | :---: | :---: | :---: |
+| **Model Quality** | 🌟 **S-Tier (GPT-4o/Claude)** | B-Tier (Llama/Mistral) | S-Tier |
+| **Hardware Reqs** | 💻 **Minimal (Any CPU)** | 🔋 High (GPU Required) | None |
+| **Cost** | 💸 **Fixed ($10/mo)** | Free | 💸 Pay-per-token ($$$) |
+| **Setup** | ⚡ **1 Click (VS Code)** | Complex | Easy |
+| **Privacy** | 🔒 **Local Proxy** | Local | Cloud |
 
-- **Real-time Statistics** — Requests, tokens, latency, error rates
-- **Live Log Streaming** — Monitor API traffic as it happens
-- **Full Audit Trail** — Complete request history with configurable retention
-- **Usage Analytics** — Charts for daily patterns and token consumption
-
-![Dashboard](Showcase.png)
+*Perfect for: Digital Nomads, Students, enterprise developers behind firewalls, and AI engineers prototyping RAG applications.*
 
 ---
 
 ## 💰 Cost Comparison
 
-| Solution | Monthly Cost | Local Server | API Compatible | AI Apps |
-|----------|--------------|--------------|----------------|---------|
-| **This Extension** | **$10** | ✅ | ✅ | ✅ |
-| ChatGPT Plus | $20 | ❌ | ❌ | ❌ |
-| OpenAI API | Pay-per-use | ❌ | ✅ | ❌ |
-| Anthropic API | Pay-per-use | ❌ | ❌ | ❌ |
+| Feature | **This Extension** | OpenAI API | Anthropic API |
+|:--------|:------------------:|:----------:|:-------------:|
+| **Cost** | **$0 (Included in Copilot)** | Pay-per-token | Pay-per-token |
+| **Models** | GPT-4o, Claude 3.5, Gemini | GPT models only | Claude models only |
+| **Privacy** | Local Proxy | Cloud API | Cloud API |
 
 ---
 
-## 🔒 Security Features
+## 📝 License & Disclaimer
 
-- **IP Allowlisting** — Restrict access to specific addresses or CIDR ranges
-- **Bearer Token Auth** — Optional API key protection
-- **Data Redaction** — Automatically mask sensitive data in logs
-- **Rate Limiting** — Configurable request thresholds
-- **Connection Limits** — Control concurrent requests per IP
-- **Request Timeout** — Prevent hanging connections
-- **Payload Limits** — Guard against oversized requests
+**MIT License.**
 
----
-
-## 📝 API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | OpenAI chat completions |
-| `POST` | `/v1/messages` | Anthropic messages |
-| `POST` | `/v1beta/models/:model:generateContent` | Google Gemini |
-| `GET` | `/v1/models` | List available models |
-| `GET` | `/docs` | Swagger UI |
-| `GET` | `/v1/usage` | Usage statistics |
-
----
-
-## 🐛 Troubleshooting
-
-<details>
-<summary><strong>Server won't start</strong></summary>
-
-1. Check if port 3030 is in use: `lsof -i :3030`
-2. Verify GitHub Copilot is signed in (check VS Code status bar)
-3. Ensure both Copilot extensions are installed
-
-</details>
-
-<details>
-<summary><strong>Apps not responding</strong></summary>
-
-1. Check GitHub Copilot Chat extension is installed
-2. Verify your Copilot subscription is active
-3. Try reloading VS Code window
-
-</details>
-
-<details>
-<summary><strong>LAN access not working</strong></summary>
-
-1. Set `server.host` to `0.0.0.0`
-2. Check firewall allows port 3030
-3. Use machine's IP address, not `localhost`
-
-</details>
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## ⚠️ Disclaimer
-
-This extension is an independent project not affiliated with GitHub, Microsoft, or OpenAI. It leverages your existing GitHub Copilot subscription. Use responsibly and in accordance with GitHub's Terms of Service.
-
----
+> **Disclaimer:** This extension is an independent project and is not affiliated with GitHub, Microsoft, or OpenAI. It leverages your existing GitHub Copilot subscription enabling you to use it in new ways. Use responsibly.
 
 <p align="center">
   <strong>Built with ❤️ by <a href="https://suhaibbinyounis.com">Suhaib Bin Younis</a></strong>
-</p>
-
-<p align="center">
-  <a href="https://github.com/suhaibbinyounis/github-copilot-api-vscode">
-    <img src="https://img.shields.io/github/stars/suhaibbinyounis/github-copilot-api-vscode?style=social" alt="GitHub Stars">
-  </a>
 </p>
