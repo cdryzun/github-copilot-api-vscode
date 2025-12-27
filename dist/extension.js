@@ -55997,19 +55997,30 @@ var CopilotApiGateway = class {
     if (this.config.enableWebSocket) {
       const { WebSocketServer: WSServer } = await Promise.resolve().then(() => (init_wrapper(), wrapper_exports));
       this.wsServer = new WSServer({ noServer: true });
-      this.wsServer.on("connection", (socket) => this.handleWebSocketConnection(socket));
       this.wsServer.on("error", (error2) => {
         this.logError("WebSocket server error", error2);
       });
+      const wsEndpoints = [
+        "/v1/realtime",
+        // OpenAI format
+        "/anthropic/v1/realtime",
+        // Anthropic format
+        "/google/v1/realtime",
+        // Google format
+        "/llama/v1/realtime"
+        // Llama format
+      ];
       this.httpServer.on("upgrade", (request, socket, head) => {
         if (!request.url) {
           socket.destroy();
           return;
         }
         const url2 = this.buildUrl(request.url);
-        if (url2.pathname === "/v1/realtime") {
+        const endpoint = wsEndpoints.find((ep) => url2.pathname === ep);
+        if (endpoint) {
           this.wsServer?.handleUpgrade(request, socket, head, (ws) => {
-            this.wsServer?.emit("connection", ws, request);
+            ws._endpoint = endpoint;
+            this.handleWebSocketConnection(ws, endpoint);
           });
         } else {
           socket.destroy();
@@ -56461,6 +56472,18 @@ var CopilotApiGateway = class {
     }
     if (url2.pathname.startsWith("/v1/audio")) {
       throw new ApiError(501, "Audio processing is not supported by Copilot.", "not_implemented", "audio_not_supported");
+    }
+    const wsEndpoints = ["/v1/realtime", "/anthropic/v1/realtime", "/google/v1/realtime", "/llama/v1/realtime"];
+    if (req.method === "GET" && wsEndpoints.includes(url2.pathname)) {
+      res.writeHead(426, { "Content-Type": "application/json", "Upgrade": "websocket" });
+      res.end(JSON.stringify({
+        error: {
+          message: "This is a WebSocket endpoint. Please use a WebSocket client and Upgrade header.",
+          type: "upgrade_required",
+          code: "websocket_only"
+        }
+      }));
+      return;
     }
     throw new ApiError(404, `No route for ${req.method ?? "UNKNOWN"} ${url2.pathname}`, "not_found");
   }
@@ -57428,7 +57451,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       }
     };
   }
-  async handleWebSocketMessage(socket, raw) {
+  async handleWebSocketMessage(socket, raw, endpoint) {
     const text = typeof raw === "string" ? raw : raw.toString("utf8");
     let payload;
     try {
@@ -57441,9 +57464,33 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       socket.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
       return;
     }
+    if (type === "models.list") {
+      const models = await this.getAvailableModels();
+      socket.send(JSON.stringify({ type: "models.result", data: { object: "list", data: models } }));
+      return;
+    }
+    switch (endpoint) {
+      case "/v1/realtime":
+      case "/llama/v1/realtime":
+        await this.handleOpenAIWebSocketMessage(socket, payload, type, endpoint);
+        return;
+      case "/anthropic/v1/realtime":
+        await this.handleAnthropicWebSocketMessage(socket, payload, type);
+        return;
+      case "/google/v1/realtime":
+        await this.handleGoogleWebSocketMessage(socket, payload, type);
+        return;
+      default:
+        throw new ApiError(400, `Unknown WebSocket endpoint: ${endpoint}`, "invalid_request_error", "unknown_endpoint");
+    }
+  }
+  async handleOpenAIWebSocketMessage(socket, payload, type, endpoint) {
     if (!type || type === "chat.completions.create") {
       const body = payload?.data ?? payload?.request ?? payload;
-      const response = await this.processChatCompletion(body, { source: "websocket", endpoint: "/v1/chat/completions" });
+      if (endpoint === "/llama/v1/realtime" && body?.max_completion_tokens && !body?.max_tokens) {
+        body.max_tokens = body.max_completion_tokens;
+      }
+      const response = await this.processChatCompletion(body, { source: "websocket", endpoint });
       socket.send(JSON.stringify({ type: "chat.completion.result", data: response }));
       return;
     }
@@ -57453,19 +57500,39 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       socket.send(JSON.stringify({ type: "completion.result", data: response }));
       return;
     }
-    throw new ApiError(400, `Unsupported message type: ${type} `, "invalid_request_error", "unsupported_ws_message");
+    throw new ApiError(400, `Unsupported OpenAI WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
   }
-  handleWebSocketConnection(socket) {
+  async handleAnthropicWebSocketMessage(socket, payload, type) {
+    if (!type || type === "messages.create") {
+      const body = payload?.data ?? payload?.request ?? payload;
+      const response = await this.processAnthropicMessages(body);
+      socket.send(JSON.stringify({ type: "message.result", data: response }));
+      return;
+    }
+    throw new ApiError(400, `Unsupported Anthropic WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
+  }
+  async handleGoogleWebSocketMessage(socket, payload, type) {
+    if (!type || type === "generateContent") {
+      const body = payload?.data ?? payload?.request ?? payload;
+      const modelId = payload?.model ?? "gemini-pro";
+      const response = await this.processGoogleGenerateContent(modelId, body);
+      socket.send(JSON.stringify({ type: "content.result", data: response }));
+      return;
+    }
+    throw new ApiError(400, `Unsupported Google WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
+  }
+  handleWebSocketConnection(socket, endpoint) {
     socket.send(JSON.stringify({
       type: "session.created",
       session: {
         id: (0, import_crypto.randomUUID)(),
         model: this.config.defaultModel,
-        created: Math.floor(Date.now() / 1e3)
+        created: Math.floor(Date.now() / 1e3),
+        endpoint
       }
     }));
     socket.on("message", (data) => {
-      void this.handleWebSocketMessage(socket, data).catch((error2) => {
+      void this.handleWebSocketMessage(socket, data, endpoint).catch((error2) => {
         if (error2 instanceof ApiError) {
           this.sendWsError(socket, error2);
         } else {
@@ -57842,7 +57909,8 @@ ${text} `;
         { name: "Google", description: "Google Generative AI API compatible endpoints" },
         { name: "Llama", description: "Meta Llama API compatible endpoints" },
         { name: "Models", description: "Model information" },
-        { name: "Utilities", description: "Utility endpoints" }
+        { name: "Utilities", description: "Utility endpoints" },
+        { name: "WebSocket", description: "Real-time WebSocket endpoints for all providers" }
       ],
       paths: {
         "/v1/chat/completions": {
@@ -58188,6 +58256,54 @@ ${text} `;
                   }
                 }
               }
+            }
+          }
+        },
+        "/v1/realtime": {
+          get: {
+            tags: ["WebSocket"],
+            summary: "OpenAI Realtime WebSocket",
+            description: "Initiate a WebSocket connection for real-time chat completions using the OpenAI format. Requires `Upgrade: websocket` header.",
+            operationId: "connectOpenAIRealtime",
+            responses: {
+              "101": { description: "Switching Protocols to WebSocket" },
+              "426": { description: "Upgrade Required - Use WebSocket client" }
+            }
+          }
+        },
+        "/anthropic/v1/realtime": {
+          get: {
+            tags: ["WebSocket", "Anthropic"],
+            summary: "Anthropic Realtime WebSocket",
+            description: "Initiate a WebSocket connection using the Anthropic Messages API format.",
+            operationId: "connectAnthropicRealtime",
+            responses: {
+              "101": { description: "Switching Protocols to WebSocket" },
+              "426": { description: "Upgrade Required - Use WebSocket client" }
+            }
+          }
+        },
+        "/google/v1/realtime": {
+          get: {
+            tags: ["WebSocket", "Google"],
+            summary: "Google Realtime WebSocket",
+            description: "Initiate a WebSocket connection using the Google Gemini format.",
+            operationId: "connectGoogleRealtime",
+            responses: {
+              "101": { description: "Switching Protocols to WebSocket" },
+              "426": { description: "Upgrade Required - Use WebSocket client" }
+            }
+          }
+        },
+        "/llama/v1/realtime": {
+          get: {
+            tags: ["WebSocket", "Llama"],
+            summary: "Llama Realtime WebSocket",
+            description: "Initiate a WebSocket connection using the Llama/OpenAI format.",
+            operationId: "connectLlamaRealtime",
+            responses: {
+              "101": { description: "Switching Protocols to WebSocket" },
+              "426": { description: "Upgrade Required - Use WebSocket client" }
             }
           }
         }

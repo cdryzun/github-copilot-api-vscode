@@ -193,6 +193,14 @@
                 </div>
 
                 <div class="docs-nav-section">
+                    <h4 class="docs-nav-title">WebSocket API</h4>
+                    <ul class="docs-nav-links">
+                        <li><a href="#websocket-realtime">Realtime API</a></li>
+                        <li><a href="#websocket-messages">Message Types</a></li>
+                    </ul>
+                </div>
+
+                <div class="docs-nav-section">
                     <h4 class="docs-nav-title">Utilities</h4>
                     <ul class="docs-nav-links">
                         <li><a href="#usage">Usage Statistics</a></li>
@@ -570,6 +578,107 @@ response = model.generate_content(<span class="code-string">"Tell me a joke"</sp
     "model": "llama-3.1-70b",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WebSocket API -->
+                <h2 id="websocket-realtime" style="margin-top: 3rem;">WebSocket API</h2>
+                <div class="endpoint-card">
+                    <div class="endpoint-header" onclick="this.parentElement.classList.toggle('expanded')">
+                        <span class="endpoint-method get">WS</span>
+                        <span class="endpoint-path">/v1/realtime</span>
+                        <span class="endpoint-desc">OpenAI-compatible Realtime API</span>
+                        <span class="endpoint-toggle">▼</span>
+                    </div>
+                    <div class="endpoint-body">
+                        <p>Establish a persistent WebSocket connection for low-latency, bidirectional communication.
+                            Supports chat completions and text completions.</p>
+
+                        <h4>Endpoints</h4>
+                        <div class="code-block">
+                            <div class="code-content">
+                                <pre># OpenAI Format (Default)
+ws://127.0.0.1:3030/v1/realtime
+
+# Anthropic Format
+ws://127.0.0.1:3030/anthropic/v1/realtime
+
+# Google Gemini Format
+ws://127.0.0.1:3030/google/v1/realtime
+
+# Llama Format
+ws://127.0.0.1:3030/llama/v1/realtime</pre>
+                            </div>
+                        </div>
+
+                        <h4 id="websocket-messages">Message Types</h4>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 1rem;">
+                            <thead>
+                                <tr style="background: var(--bg-surface-2); text-align: left;">
+                                    <th style="padding: 0.5rem;">Type</th>
+                                    <th style="padding: 0.5rem;">Direction</th>
+                                    <th style="padding: 0.5rem;">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 0.5rem;"><code>session.created</code></td>
+                                    <td style="padding: 0.5rem;">Server → Client</td>
+                                    <td style="padding: 0.5rem;">Sent immediately upon connection</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 0.5rem;"><code>chat.completions.create</code></td>
+                                    <td style="padding: 0.5rem;">Client → Server</td>
+                                    <td style="padding: 0.5rem;">Request a chat completion (OpenAI/Llama format)</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 0.5rem;"><code>messages.create</code></td>
+                                    <td style="padding: 0.5rem;">Client → Server</td>
+                                    <td style="padding: 0.5rem;">Request a message (Anthropic format)</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 0.5rem;"><code>generateContent</code></td>
+                                    <td style="padding: 0.5rem;">Client → Server</td>
+                                    <td style="padding: 0.5rem;">Request content generation (Google format)</td>
+                                </tr>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <td style="padding: 0.5rem;"><code>models.list</code></td>
+                                    <td style="padding: 0.5rem;">Client → Server</td>
+                                    <td style="padding: 0.5rem;">Request available models list</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h4>Example (JavaScript)</h4>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <div class="code-dots"><span></span><span></span><span></span></div>
+                                <span class="code-lang">JavaScript</span>
+                                <button class="code-copy">Copy</button>
+                            </div>
+                            <div class="code-content">
+                                <pre>const ws = new WebSocket('ws://127.0.0.1:3030/v1/realtime');
+
+ws.onopen = () => {
+    // List models
+    ws.send(JSON.stringify({ type: 'models.list' }));
+
+    // Send chat request
+    ws.send(JSON.stringify({
+        type: 'chat.completions.create',
+        data: {
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'Hello!' }]
+        }
+    }));
+};
+
+ws.onmessage = (event) => {
+    const response = JSON.parse(event.data);
+    console.log('Received:', response);
+};</pre>
                             </div>
                         </div>
                     </div>

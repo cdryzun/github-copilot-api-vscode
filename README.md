@@ -129,11 +129,19 @@ The gateway provides fully compatible endpoints for major AI providers.
 | Provider | Endpoint | Method | Description |
 |----------|----------|--------|-------------|
 | **OpenAI** | `/v1/chat/completions` | `POST` | Full support for streaming, tools, and JSON mode. |
+| **OpenAI** | `/v1/realtime` | `WS` | **Realtime API** for low-latency bidirectional chat. |
+| **OpenAI** | `/v1/completions` | `POST` | Legacy text completion endpoint. |
 | **OpenAI** | `/v1/models` | `GET` | List available models from your Copilot plan. |
 | **Anthropic** | `/v1/messages` | `POST` | Compatible with Anthropic SDKs (Claude). |
+| **Anthropic** | `/anthropic/v1/realtime` | `WS` | Realtime API using Anthropic Messages format. |
 | **Google** | `/v1beta/models/:model:generateContent` | `POST` | Compatible with Google Generative AI SDKs. |
+| **Google** | `/google/v1/realtime` | `WS` | Realtime API using Google Gemini format. |
 | **Llama** | `/llama/v1/chat/completions` | `POST` | Targeted support for Llama client libraries. |
+| **Llama** | `/llama/v1/realtime` | `WS` | Realtime API using Llama format. |
+| **Utilities** | `/v1/tokenize` | `POST` | Count tokens for a given string (OpenAI format). |
 | **Utilities** | `/v1/usage` | `GET` | Retrieve server usage statistics. |
+| **Utilities** | `/metrics` | `GET` | Prometheus-compatible metrics endpoint. |
+| **Utilities** | `/health` | `GET` | Service health check & Copilot status. |
 | **Utilities** | `/docs` | `GET` | **Offline Swagger UI** for interactive testing. |
 
 ### Interactive Documentation (Swagger UI)
