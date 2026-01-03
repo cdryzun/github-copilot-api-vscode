@@ -533,12 +533,22 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
 
     <!-- GitHub Star Section -->
     <div class="section" style="text-align: center; padding: 16px 12px;">
-        <a href="https://github.com/suhaibbinyounis/github-copilot-api-vscode" 
-           target="_blank" 
-           style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: background 0.15s ease;">
-            ⭐ Star on GitHub
-        </a>
-        <div style="margin-top: 8px; font-size: 10px; opacity: 0.6;">If you find this useful, please star the repo!</div>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+            <a href="https://github.com/suhaibbinyounis/github-copilot-api-vscode" 
+               target="_blank" 
+               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: background 0.15s ease;">
+                ⭐ Star
+            </a>
+            <a href="https://github.com/sponsors/suhaibbinyounis" 
+               target="_blank" 
+               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: linear-gradient(135deg, #ea4aaa 0%, #db61a2 100%); color: white; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 500; transition: opacity 0.15s ease;">
+                💖 Sponsor
+            </a>
+        </div>
+        <div style="margin-top: 10px; font-size: 10px; opacity: 0.65; line-height: 1.4;">
+            Enjoying this extension? A star helps others discover it.<br>
+            If it's saved you time or money, consider sponsoring — it keeps this project alive. 💙
+        </div>
     </div>
 
     <script nonce="${nonce}">
