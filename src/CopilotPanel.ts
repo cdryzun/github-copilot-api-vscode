@@ -54,6 +54,15 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 CopilotPanel.currentPanel.webview.postMessage({ type: 'liveLog', value: log });
             }
         });
+        this._gateway.onDidLogRequestStart(startLog => {
+            // Show pending request immediately in Live Log Tail
+            if (this._view) {
+                this._view.webview.postMessage({ type: 'liveLogStart', value: startLog });
+            }
+            if (CopilotPanel.currentPanel) {
+                CopilotPanel.currentPanel.webview.postMessage({ type: 'liveLogStart', value: startLog });
+            }
+        });
     }
 
     /**
@@ -681,6 +690,19 @@ Format the output as a ready-to-use prompt that the user can copy and paste into
         }
         #log-status-indicator.active { background-color: var(--vscode-testing-iconPassed); box-shadow: 0 0 8px var(--vscode-testing-iconPassed); }
         #log-status-indicator.inactive { background-color: var(--vscode-disabledForeground); }
+
+        /* Pending log entry styles */
+        .log-line.pending {
+            opacity: 0.7;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .log-line.pending .log-status {
+            color: var(--vscode-charts-yellow);
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 0.4; }
+        }
 
     </style>
 </head>
@@ -2207,6 +2229,8 @@ if response.choices[0].message.tool_calls:
             } else if (message.type === 'auditLogData') {
                 console.log('[Dashboard] Updating log table with', message.data?.length || 0, 'entries');
                 updateLogTable(message.data, message.page, message.total, message.pageSize);
+            } else if (message.type === 'liveLogStart') {
+                appendLogStart(message.value);
             } else if (message.type === 'liveLog') {
                 appendLog(message.value);
             } else if (message.type === 'scrollTo') {
@@ -2274,24 +2298,21 @@ if response.choices[0].message.tool_calls:
 
 
 
-        function appendLog(log) {
+        function appendLogStart(startLog) {
             if (!logContainer) return;
             if (linesCount === 0) logContainer.innerHTML = '';
 
             const line = document.createElement('div');
-            line.className = 'log-line';
+            line.className = 'log-line pending';
+            line.setAttribute('data-request-id', startLog.requestId);
 
-            const isError = log.status >= 400;
-            const statusClass = isError ? 'error' : 'success';
-
-            const time = new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const time = new Date(startLog.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
             line.innerHTML = '<span class="log-time">[' + time + ']</span>' +
-                             '<span class="log-method">' + (log.method || 'UNK') + '</span>' +
-                             '<span class="log-path">' + (log.path || '/') + '</span>' +
-                             '<span class="log-status ' + statusClass + '">' + (log.status || 0) + '</span>' +
-                             '<span class="log-latency">' + (log.durationMs || 0) + 'ms</span>';
-
+                             '<span class="log-method">' + (startLog.method || 'UNK') + '</span>' +
+                             '<span class="log-path">' + (startLog.path || '/') + '</span>' +
+                             '<span class="log-status">...</span>' +
+                             '<span class="log-latency">pending</span>';
 
             logContainer.appendChild(line);
             linesCount++;
@@ -2307,6 +2328,59 @@ if response.choices[0].message.tool_calls:
             if (linesCount > 100) {
                 logContainer.removeChild(logContainer.firstChild);
                 linesCount--;
+            }
+
+            if (autoScroll && autoScroll.checked) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+
+        function appendLog(log) {
+            if (!logContainer) return;
+            
+            // Check if there's a pending entry for this request
+            const existingLine = logContainer.querySelector('[data-request-id="' + log.requestId + '"]');
+            
+            const isError = log.status >= 400;
+            const statusClass = isError ? 'error' : 'success';
+            const time = new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            if (existingLine) {
+                // Update the existing pending entry
+                existingLine.className = 'log-line';
+                existingLine.innerHTML = '<span class="log-time">[' + time + ']</span>' +
+                                 '<span class="log-method">' + (log.method || 'UNK') + '</span>' +
+                                 '<span class="log-path">' + (log.path || '/') + '</span>' +
+                                 '<span class="log-status ' + statusClass + '">' + (log.status || 0) + '</span>' +
+                                 '<span class="log-latency">' + (log.durationMs || 0) + 'ms</span>';
+            } else {
+                // No pending entry, create a new line (fallback if start event was missed)
+                if (linesCount === 0) logContainer.innerHTML = '';
+
+                const line = document.createElement('div');
+                line.className = 'log-line';
+
+                line.innerHTML = '<span class="log-time">[' + time + ']</span>' +
+                                 '<span class="log-method">' + (log.method || 'UNK') + '</span>' +
+                                 '<span class="log-path">' + (log.path || '/') + '</span>' +
+                                 '<span class="log-status ' + statusClass + '">' + (log.status || 0) + '</span>' +
+                                 '<span class="log-latency">' + (log.durationMs || 0) + 'ms</span>';
+
+                logContainer.appendChild(line);
+                linesCount++;
+
+                // Limit shown lines to 100 for performance
+                if (linesCount > 100) {
+                    logContainer.removeChild(logContainer.firstChild);
+                    linesCount--;
+                }
+            }
+
+            // Pulse status indicator
+            if (logStatus) {
+                logStatus.classList.remove('active');
+                void logStatus.offsetWidth; // Trigger reflow
+                logStatus.classList.add('active');
             }
 
             if (autoScroll && autoScroll.checked) {

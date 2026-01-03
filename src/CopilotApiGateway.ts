@@ -193,6 +193,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 	public readonly onDidChangeStatus = this._onDidChangeStatus.event;
 	private readonly _onDidLogRequest = new vscode.EventEmitter<AuditEntry>();
 	public readonly onDidLogRequest = this._onDidLogRequest.event;
+	private readonly _onDidLogRequestStart = new vscode.EventEmitter<{ requestId: string; method: string; path: string; timestamp: string }>();
+	public readonly onDidLogRequestStart = this._onDidLogRequestStart.event;
 
 	// Domain cache for IP allowlist (maps domain names to resolved IPs)
 	private domainCache = new Map<string, string[]>();
@@ -873,6 +875,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 			const requestStart = Date.now();
 			const requestId = randomUUID().slice(0, 8);
+
+			// Fire start event immediately for Live Log Tail to show pending request
+			this._onDidLogRequestStart.fire({
+				requestId,
+				method: req.method || 'UNKNOWN',
+				path: req.url || '/',
+				timestamp: new Date().toISOString()
+			});
 
 			void this.handleHttpRequest(req, res, requestId, requestStart)
 				.catch(error => {
