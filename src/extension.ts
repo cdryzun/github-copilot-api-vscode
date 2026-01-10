@@ -6,6 +6,8 @@ import { CopilotApiGateway, ensureCopilotChatReady, getErrorMessage, normalizePr
 import { CopilotPanel } from './CopilotPanel';
 import { createDesktopShortcut } from './commands/createDesktopShortcut';
 
+let gateway: CopilotApiGateway | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
 	const output = vscode.window.createOutputChannel('GitHub Copilot API Server');
 	context.subscriptions.push(output);
@@ -14,17 +16,16 @@ export function activate(context: vscode.ExtensionContext) {
 	statusItem.command = 'github-copilot-api-vscode.showServerControls';
 	context.subscriptions.push(statusItem);
 
-	const gateway = new CopilotApiGateway(output, statusItem, context);
-	context.subscriptions.push(gateway);
-
-	const provider = new CopilotPanel(context.extensionUri, gateway);
-	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
-	);
-
-
 	// Status Bar & Notifications
 	const updateStatusBar = async () => {
+		if (!gateway) {
+			statusItem.text = '$(circle-slash) Copilot API: OFF';
+			statusItem.tooltip = 'Copilot API Gateway is stopped (Standby Mode)';
+			statusItem.backgroundColor = undefined;
+			statusItem.show();
+			return;
+		}
+
 		const status = await gateway.getStatus();
 		if (status.running) {
 			const rpm = status.stats.requestsPerMinute;
@@ -90,33 +91,57 @@ Server is stopped. Click to start or manage.
 	};
 
 	let wasRunning = false;
-	context.subscriptions.push(gateway.onDidChangeStatus(async () => {
-		await updateStatusBar();
 
-		// Notifications
-		const status = await gateway.getStatus();
-		if (status.running && !wasRunning) {
-			const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
-			if (config.get<boolean>('showNotifications', true)) {
-				// Show actual LAN IP instead of 0.0.0.0 when bound to all interfaces
-				const displayHost = (status.config.host === '0.0.0.0' && status.networkInfo?.localIPs?.length)
-					? status.networkInfo.localIPs[0]
-					: status.config.host;
-				const protocol = status.isHttps ? 'https' : 'http';
-				const selection = await vscode.window.showInformationMessage(
-					`GitHub Copilot API Server started at ${protocol}://${displayHost}:${status.config.port}`,
-					'Open Dashboard'
-				);
-				if (selection === 'Open Dashboard') {
-					void vscode.commands.executeCommand('github-copilot-api-vscode.openDashboard');
+	// Lazy Gateway Accessor
+	const getGateway = async (): Promise<CopilotApiGateway> => {
+		if (gateway) {
+			return gateway;
+		}
+
+		const gw = new CopilotApiGateway(output, statusItem, context);
+		gateway = gw;
+		context.subscriptions.push(gw);
+
+		// Hook up listeners
+		context.subscriptions.push(gw.onDidChangeStatus(async () => {
+			await updateStatusBar();
+
+			// Notifications
+			const status = await gw.getStatus();
+			if (status.running && !wasRunning) {
+				const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
+				if (config.get<boolean>('showNotifications', true)) {
+					// Show actual LAN IP instead of 0.0.0.0 when bound to all interfaces
+					const displayHost = (status.config.host === '0.0.0.0' && status.networkInfo?.localIPs?.length)
+						? status.networkInfo.localIPs[0]
+						: status.config.host;
+					const protocol = status.isHttps ? 'https' : 'http';
+					const selection = await vscode.window.showInformationMessage(
+						`GitHub Copilot API Server started at ${protocol}://${displayHost}:${status.config.port}`,
+						'Open Dashboard'
+					);
+					if (selection === 'Open Dashboard') {
+						void vscode.commands.executeCommand('github-copilot-api-vscode.openDashboard');
+					}
 				}
 			}
-		}
-		wasRunning = status.running;
-	}));
+			wasRunning = status.running;
+		}));
+
+		// Initial status update after creation
+		await updateStatusBar();
+		return gw;
+	};
+
+	// Initialize Provider with lazy accessor
+	const provider = new CopilotPanel(context.extensionUri, getGateway);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
+	);
 
 	const showServerControls = vscode.commands.registerCommand('github-copilot-api-vscode.showServerControls', async () => {
-		const status = await gateway.getStatus();
+		const gw = await getGateway(); // Force init
+		const status = await gw.getStatus();
 		const items: vscode.QuickPickItem[] = [];
 
 		// status header
@@ -168,20 +193,21 @@ Server is stopped. Click to start or manage.
 		}
 
 		if (selection.label.includes('Stop Server')) {
-			await gateway.stopServer();
+			await gw.stopServer();
 		} else if (selection.label.includes('Start Server')) {
-			await gateway.startServer();
+			await gw.startServer();
 		} else if (selection.label.includes('Restart Server')) {
-			await gateway.restart();
+			await gw.restart();
 		} else if (selection.label.includes('Open Full Dashboard')) {
-			CopilotPanel.createOrShow(context.extensionUri, gateway);
+			CopilotPanel.createOrShow(context.extensionUri, getGateway);
 		} else if (selection.label.includes('Show Logs')) {
 			output.show();
 		}
 	});
 
-	// Initial State
-	void updateStatusBar();
+	// Initial State for Status Bar (Static "OFF" until loaded)
+	statusItem.text = '$(circle-slash) Copilot API: OFF';
+	statusItem.show();
 
 	// Auto-Start Logic
 	const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
@@ -191,9 +217,12 @@ Server is stopped. Click to start or manage.
 	output.appendLine(`[DEBUG] Activation. Enabled: ${enabled}, AutoStart: ${autoStart}`);
 
 	if (enabled || autoStart) {
-		void gateway.start().catch(error => {
-			output.appendLine(`[${new Date().toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error)}`);
-			void vscode.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error)}`);
+		// If auto-start is requested, initialize immediately
+		getGateway().then(gw => {
+			return gw.start().catch(error => {
+				output.appendLine(`[${new Date().toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error)}`);
+				void vscode.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error)}`);
+			});
 		});
 	}
 
@@ -263,7 +292,7 @@ Server is stopped. Click to start or manage.
 
 
 	const openDashboard = vscode.commands.registerCommand('github-copilot-api-vscode.openDashboard', () => {
-		CopilotPanel.createOrShow(context.extensionUri, gateway);
+		CopilotPanel.createOrShow(context.extensionUri, getGateway);
 	});
 
 	const createShortcutCommand = vscode.commands.registerCommand('github-copilot-api-vscode.createDesktopShortcut', async () => {
@@ -279,23 +308,80 @@ Server is stopped. Click to start or manage.
 			output.appendLine(`[URI Handler] Received URI: ${uri.toString()} (path: ${path})`);
 
 			if (path === '/dashboard') {
-				CopilotPanel.createOrShow(context.extensionUri, gateway);
+				CopilotPanel.createOrShow(context.extensionUri, getGateway);
 			} else if (path === '/start') {
-				void gateway.startServer().then(() => {
+				void getGateway().then(gw => gw.startServer().then(() => {
 					void vscode.window.showInformationMessage('Copilot API Server started via shortcut');
-				});
+				}));
 			} else if (path === '/stop') {
-				void gateway.stopServer().then(() => {
-					void vscode.window.showInformationMessage('Copilot API Server stopped via shortcut');
-				});
+				// Only stop if gateway exists
+				if (gateway) {
+					void gateway.stopServer().then(() => {
+						void vscode.window.showInformationMessage('Copilot API Server stopped via shortcut');
+					});
+				}
 			} else {
 				void vscode.window.showWarningMessage(`Unknown shortcut path: ${path}`);
 			}
 		}
 	}));
 
+	const PROMPT_HEADER = `
+# ℹ️ DEFAULT SYSTEM PROMPT
+# -------------------------------------------------------------------------------------
+# This prompt is valid ONLY when no system instruction is provided by the client tool.
+# It acts as a fallback and does NOT permanently override API requests.
+#
+# EDIT BELOW THIS LINE - SAVE TO APPLY
+# -------------------------------------------------------------------------------------
 
-	context.subscriptions.push(openChatCommand, askChatCommand, askSelectionCommand, createShortcutCommand, openDashboard);
+`.trimStart();
+
+	const editSystemPrompt = vscode.commands.registerCommand('github-copilot-api-vscode.editSystemPrompt', async () => {
+		const storageUri = context.globalStorageUri;
+		try {
+			// Ensure storage directory exists
+			await vscode.workspace.fs.createDirectory(storageUri);
+		} catch { }
+
+		const fileUri = vscode.Uri.joinPath(storageUri, 'system_prompt.md');
+		const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
+		const currentPrompt = config.get<string>('defaultSystemPrompt', '');
+
+		// Write file with header
+		const content = PROMPT_HEADER + (currentPrompt || '');
+		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
+
+		const doc = await vscode.workspace.openTextDocument(fileUri);
+		await vscode.window.showTextDocument(doc);
+	});
+
+	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
+		if (doc.uri.scheme === 'file' && doc.uri.fsPath.endsWith('system_prompt.md')) {
+			// Verify it's our file
+			if (doc.uri.fsPath.includes(context.globalStorageUri.fsPath)) {
+				const text = doc.getText();
+				const separator = '# -------------------------------------------------------------------------------------';
+				const lastSeparatorIndex = text.lastIndexOf(separator);
+
+				let newPrompt = text;
+				if (lastSeparatorIndex !== -1) {
+					// Extract everything after the last separator
+					newPrompt = text.substring(lastSeparatorIndex + separator.length).trim();
+				} else {
+					// Fallback if user deleted header
+					newPrompt = text.trim();
+				}
+
+				const config = vscode.workspace.getConfiguration('githubCopilotApi.server');
+				await config.update('defaultSystemPrompt', newPrompt, vscode.ConfigurationTarget.Global);
+				void vscode.window.setStatusBarMessage('$(check) Default system prompt updated', 3000);
+			}
+		}
+	}));
+
+
+	context.subscriptions.push(openChatCommand, askChatCommand, askSelectionCommand, createShortcutCommand, openDashboard, showServerControls, editSystemPrompt);
 }
 
 export function deactivate() {

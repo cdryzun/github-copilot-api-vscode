@@ -38,13 +38,14 @@
 
 **GitHub Copilot API Gateway** acts as a bridge between your local development environment and GitHub Copilot. It starts a local HTTP server that standardizes communication, allowing you to use Copilot with **any AI SDK or tool**.
 
-### One Subscription, Any Model
+### One Subscription, Every Model
 
-Why pay for separate API keys? Use your existing Copilot subscription to power tools that expect:
-- **OpenAI** (GPT Family: `gpt-4o`, `gpt-3.5-turbo`)
-- **Anthropic** (Claude Family: `claude-3-5-sonnet`)
-- **Google** (Gemini Family: `gemini-1.5-pro`)
+**Access any model GitHub Copilot provides** — current and future — through a single, unified API. Whatever models GitHub makes available to Copilot users, this gateway exposes them:
+- **OpenAI** (GPT Family)
+- **Anthropic** (Claude Family)
+- **Google** (Gemini Family)
 - **Meta** (Llama Family)
+- **...and any new models GitHub adds**
 
 ### Seamless Compatibility
 
@@ -60,7 +61,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="your-preferred-model",  # Use any model from /v1/models
     messages=[{"role": "user", "content": "Hello!"}]
 )
 ```
@@ -70,10 +71,14 @@ By standardizing Copilot as a local API, you instantly gain access to the entire
 
 | Category | Tools & Frameworks | Use Cases |
 | :--- | :--- | :--- |
-| **Orchestration** | **LangChain**, **LlamaIndex**, **Flowise** | Build RAG pipelines, chat with your PDF/Notion data. |
-| **Agents** | **AutoGPT**, **CrewAI**, **BabyAGI** | Run autonomous researchers and task-solvers locally. |
-| **Dev Tools** | **Cursor**, **Aider**, **Open Interpreter** | Pair program in your terminal or specialized IDEs. |
-| **No-Code** | **Bubble**, **Zapier** (via local tunnel) | Connect enterprise workflows to Copilot intelligence. |
+| **Orchestration** | **LangChain**, **LlamaIndex**, **Flowise**, **Haystack** | Build RAG pipelines, chat with your documents. |
+| **Agents** | **AutoGPT**, **CrewAI**, **BabyAGI**, **AgentGPT**, **SuperAGI** | Run autonomous researchers and task-solvers locally. |
+| **Dev Tools** | **Cursor**, **Aider**, **Continue**, **Open Interpreter**, **Cody** | Pair program in your terminal or specialized IDEs. |
+| **Code Gen** | **Sweep**, **GPT Engineer**, **Smol Developer** | Generate entire codebases from prompts. |
+| **Data & Analytics** | **PandasAI**, **LangChain SQL**, **Vanna AI** | Query databases using natural language. |
+| **Chat & Bots** | **Botpress**, **Rasa**, **Typebot**, **Chainlit** | Build conversational AI applications. |
+| **Research** | **GPT Researcher**, **Storm**, **Khoj** | Automated research and knowledge synthesis. |
+| **No-Code** | **n8n**, **Dify**, **FlowiseAI**, **Langflow** | Visual workflow builders for AI automation. |
 
 *"Turn your VS Code into the engine room for your AI experiments."*
 
@@ -210,36 +215,16 @@ Customize your experience in VS Code Settings (`githubCopilotApi.*`):
 
 ## ❓ Frequently Asked Questions (FAQ)
 
-**Q: Can I use this to get free GPT-4 access?**
-A: This extension uses your *existing* GitHub Copilot subscription. If your plan includes GPT-4 (like most do), then yes, you can access GPT-4 programmatically without paying extra OpenAI API fees.
+**Q: What models can I access?**
+A: You can access **any model GitHub Copilot provides**. Use the `/v1/models` endpoint to see all available models for your subscription.
 
 **Q: Does this work with local LLMs like Ollama or LM Studio?**
-A: This extension *is* a local LLM server, but powered by GitHub's cloud. It is a perfect alternative to running heavy local models if your hardware is limited, offering cloud-quality performance (GPT-4o, Claude 3.5) with local-like control.
+A: This extension *is* a local LLM server, but powered by GitHub's cloud. It is a perfect alternative to running heavy local models if your hardware is limited, offering cloud-quality performance with local-like control.
 
 **Q: Is this safe for enterprise use?**
 A: Yes. It runs entirely locally on your machine. No data is sent to any third-party server other than GitHub itself. You can enforce strict **IP Allowlisting** and **Audit Logging** to meet compliance requirements.
 
----
 
-## 🏆 Why Developers Choose This Gateway
-
-| Feature | **Copilot API Gateway** | Local LLMs (Ollama) | Direct Cloud APIs |
-| :--- | :---: | :---: | :---: |
-| **Model Quality** | 🌟 **S-Tier (GPT-4o/Claude)** | B-Tier (Llama/Mistral) | S-Tier |
-| **Hardware Reqs** | 💻 **Minimal (Any CPU)** | 🔋 High (GPU Required) | None |
-| **Cost** | 💸 **Fixed ($10/mo)** | Free | 💸 Pay-per-token ($$$) |
-| **Setup** | ⚡ **1 Click (VS Code)** | Complex | Easy |
-| **Privacy** | 🔒 **Local Proxy** | Local | Cloud |
-
----
-
-## 💰 Cost Comparison
-
-| Feature | **This Extension** | OpenAI API | Anthropic API |
-|:--------|:------------------:|:----------:|:-------------:|
-| **Cost** | **$0 (Included in Copilot)** | Pay-per-token | Pay-per-token |
-| **Models** | GPT-4o, Claude 3.5, Gemini | GPT models only | Claude models only |
-| **Privacy** | Local Proxy | Cloud API | Cloud API |
 
 ---
 

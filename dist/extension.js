@@ -50263,6 +50263,25 @@ var AuditService = class {
     this.dailyStatsCache = { data: result, timestamp: Date.now(), days: lastDays };
     return result;
   }
+  async getTodayStats() {
+    const stats = await this.getDailyStats(1);
+    if (stats.length > 0) {
+      const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      if (stats[stats.length - 1].date === todayStr) {
+        return stats[stats.length - 1];
+      }
+    }
+    return {
+      date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+      totalRequests: 0,
+      avgLatency: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      totalTokens: 0,
+      errorCount: 0,
+      uniqueIps: 0
+    };
+  }
   async getLogEntries(page = 1, pageSize = 10) {
     try {
       if (!fs.existsSync(this.storageDir)) {
@@ -50842,6 +50861,14 @@ var CopilotApiGateway = class {
   }
   async toggleLogging() {
     await this.updateServerConfig({ enableLogging: !this.config.enableLogging });
+  }
+  getAuditService() {
+    return this.auditService;
+  }
+  getServerStatus() {
+    return {
+      activeConnections: this.connections.size
+    };
   }
   async toggleHttps() {
     await this.updateServerConfig({ enableHttps: !this.config.enableHttps, enabled: true });
@@ -51483,7 +51510,10 @@ var CopilotApiGateway = class {
       if (!copilotModels || copilotModels.length === 0) {
         throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
       }
-      const lmModel = copilotModels[0];
+      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      if (!lmModel) {
+        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      }
       const response = await lmModel.sendRequest(messages, {}, cts.token);
       res.write("[\n");
       let firstPart = true;
@@ -51597,7 +51627,10 @@ var CopilotApiGateway = class {
       if (!copilotModels || copilotModels.length === 0) {
         throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
       }
-      const lmModel = copilotModels[0];
+      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      if (!lmModel) {
+        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      }
       const response = await lmModel.sendRequest(messages, {}, cts.token);
       res.write(`event: message_start
 data: ${JSON.stringify({
@@ -51718,6 +51751,7 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
   }
   async processStreamingChatCompletion(payload, req, res, logRequestId, logRequestStart) {
     let messages = this.normalizeChatMessages(payload);
+    messages = this.injectSystemPrompt(messages);
     messages = this.redactMessagesContent(messages);
     const model = this.resolveModel(payload?.model);
     const tools = this.normalizeTools(payload?.tools || payload?.functions);
@@ -51736,7 +51770,10 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       if (!copilotModels || copilotModels.length === 0) {
         throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
       }
-      const lmModel = copilotModels[0];
+      const lmModel = this.findCopilotModel(model, copilotModels);
+      if (!lmModel) {
+        throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      }
       const lmMessages = [];
       for (const msg of messages) {
         const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
@@ -51896,7 +51933,7 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
     if (!copilotModels || copilotModels.length === 0) {
       throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
     }
-    const lmModel = copilotModels[0];
+    const lmModel = this.findCopilotModel(model, copilotModels) || copilotModels[0];
     const tokenCount = await lmModel.countTokens(text);
     return {
       object: "token_count",
@@ -51921,16 +51958,25 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
         };
       });
     }
+    messages = this.injectSystemPrompt(messages);
     let prompt = this.composePrompt(messages);
     prompt = this.redactPromptString(prompt);
     const model = this.resolveModel(payload?.model);
-    const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt));
+    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    if (!copilotModels || copilotModels.length === 0) {
+      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+    }
+    const selectedModel = this.findCopilotModel(model, copilotModels);
+    if (!selectedModel) {
+      throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+    }
+    const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt, selectedModel));
     let inputTokens = 0;
     let outputTokens = 0;
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-      if (copilotModels && copilotModels.length > 0) {
-        const lmModel = copilotModels[0];
+      const copilotModels2 = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      if (copilotModels2 && copilotModels2.length > 0) {
+        const lmModel = copilotModels2[0];
         inputTokens = await lmModel.countTokens(prompt);
         outputTokens = await lmModel.countTokens(text || "");
       }
@@ -51994,7 +52040,10 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       if (!copilotModels || copilotModels.length === 0) {
         throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
       }
-      const lmModel = copilotModels[0];
+      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      if (!lmModel) {
+        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      }
       const result = await lmModel.sendRequest(messages, {}, new vscode4.CancellationTokenSource().token);
       let output = "";
       for await (const part of result.stream) {
@@ -52064,7 +52113,10 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       if (!copilotModels || copilotModels.length === 0) {
         throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
       }
-      const lmModel = copilotModels[0];
+      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      if (!lmModel) {
+        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      }
       const result = await lmModel.sendRequest(messages, {}, new vscode4.CancellationTokenSource().token);
       let output = "";
       for await (const part of result.stream) {
@@ -52110,6 +52162,14 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
     messages = this.injectSystemPrompt(messages);
     messages = this.redactMessagesContent(messages);
     const model = this.resolveModel(payload?.model);
+    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    if (!copilotModels || copilotModels.length === 0) {
+      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+    }
+    const selectedModel = this.findCopilotModel(model, copilotModels);
+    if (!selectedModel) {
+      throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+    }
     const baseTools = this.normalizeTools(payload?.tools || payload?.functions) || [];
     const mcpService = await this.ensureMcpService();
     const mcpTools = mcpService ? await mcpService.getAllTools() : [];
@@ -52138,7 +52198,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     let result;
     while (iterations < MAX_ITERATIONS) {
       result = await this.runWithConcurrency(
-        () => this.invokeCopilotWithTools(messages, allTools, toolChoice)
+        () => this.invokeCopilotWithTools(messages, allTools, toolChoice, selectedModel)
       );
       if (result.toolCalls && result.toolCalls.length > 0) {
         const mcpToolCalls = result.toolCalls.filter((tc) => tc.name.startsWith("mcp_"));
@@ -52189,9 +52249,9 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     let promptTokens = 0;
     let completionTokens = 0;
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-      if (copilotModels && copilotModels.length > 0) {
-        const lmModel = copilotModels[0];
+      const copilotModels2 = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      if (copilotModels2 && copilotModels2.length > 0) {
+        const lmModel = copilotModels2[0];
         const inputStr = messages.map((m) => {
           return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
         }).join("\n");
@@ -52240,6 +52300,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       object: "chat.completion",
       created,
       model,
+      actual_model: selectedModel?.id || "unknown",
       choices: [
         {
           index: 0,
@@ -52271,7 +52332,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       };
     });
   }
-  async invokeCopilotWithTools(chatMessages, tools, toolChoice) {
+  async invokeCopilotWithTools(chatMessages, tools, toolChoice, selectedModel) {
     const health = await this.getCopilotHealth();
     if (!health.installed) {
       throw new ApiError(503, "GitHub Copilot extension is not installed. Install it from the VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=GitHub.copilot", "service_unavailable", "copilot_not_installed");
@@ -52282,11 +52343,14 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     if (!health.signedIn) {
       throw new ApiError(401, 'Not signed in to GitHub Copilot. Open VS Code Command Palette (Cmd+Shift+P) and run "GitHub Copilot: Sign In".', "unauthorized", "copilot_not_signed_in");
     }
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-    if (!copilotModels || copilotModels.length === 0) {
-      throw new ApiError(503, "No Copilot language model available. Ensure you have an active GitHub Copilot subscription and VS Code is connected to the internet.", "service_unavailable", "copilot_unavailable");
+    let model = selectedModel;
+    if (!model) {
+      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      if (!copilotModels || copilotModels.length === 0) {
+        throw new ApiError(503, "No Copilot language model available. Ensure you have an active GitHub Copilot subscription and VS Code is connected to the internet.", "service_unavailable", "copilot_unavailable");
+      }
+      model = copilotModels[0];
     }
-    const model = copilotModels[0];
     const lmMessages = [];
     for (const msg of chatMessages) {
       const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
@@ -52367,14 +52431,22 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     prompt = this.redactPromptString(prompt);
     const model = this.resolveModel(payload?.model);
-    const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt));
+    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    if (!copilotModels || copilotModels.length === 0) {
+      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+    }
+    const selectedModel = this.findCopilotModel(model, copilotModels);
+    if (!selectedModel) {
+      throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+    }
+    const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt, selectedModel));
     const created = Math.floor(Date.now() / 1e3);
     let promptTokens = 0;
     let completionTokens = 0;
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-      if (copilotModels && copilotModels.length > 0) {
-        const lmModel = copilotModels[0];
+      const copilotModels2 = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      if (copilotModels2 && copilotModels2.length > 0) {
+        const lmModel = copilotModels2[0];
         const inputStr = prompt;
         promptTokens = await lmModel.countTokens(inputStr);
         const outputStr = text || "";
@@ -52508,12 +52580,15 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       this.activeRequests -= 1;
     }
   }
-  async invokeCopilot(prompt) {
-    const models = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-    if (!models || models.length === 0) {
-      throw new ApiError(503, "No Copilot language model available. Make sure GitHub Copilot is installed and signed in.", "service_unavailable", "copilot_unavailable");
+  async invokeCopilot(prompt, selectedModel) {
+    let model = selectedModel;
+    if (!model) {
+      const models = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      if (!models || models.length === 0) {
+        throw new ApiError(503, "No Copilot language model available. Make sure GitHub Copilot is installed and signed in.", "service_unavailable", "copilot_unavailable");
+      }
+      model = models[0];
     }
-    const model = models[0];
     const messages = [vscode4.LanguageModelChatMessage.User(prompt)];
     const cts = new vscode4.CancellationTokenSource();
     const timeout = setTimeout(() => cts.cancel(), (this.config.requestTimeoutSeconds || 180) * 1e3);
@@ -52655,6 +52730,25 @@ ${text} `;
       return model.trim();
     }
     return this.config.defaultModel;
+  }
+  /**
+   * Find a Copilot model matching the requested model ID.
+   * STRICT MODE: Exact match only. Returns null if not found.
+   */
+  findCopilotModel(requestedModel, availableModels) {
+    if (!availableModels || availableModels.length === 0) {
+      return null;
+    }
+    const requested = requestedModel.toLowerCase();
+    const exactMatch = availableModels.find((m) => m.id.toLowerCase() === requested);
+    if (exactMatch) {
+      return exactMatch;
+    }
+    const familyMatch = availableModels.find((m) => m.family?.toLowerCase() === requested);
+    if (familyMatch) {
+      return familyMatch;
+    }
+    return null;
   }
   injectSystemPrompt(messages) {
     if (!this.config.defaultSystemPrompt) {
@@ -54045,11 +54139,74 @@ function getErrorMessage(error2) {
 // src/CopilotPanel.ts
 var vscode5 = __toESM(require("vscode"));
 var CopilotPanel = class _CopilotPanel {
-  constructor(_extensionUri, _gateway) {
+  constructor(_extensionUri, _gatewayAccessor) {
     this._extensionUri = _extensionUri;
-    this._gateway = _gateway;
-    this._gateway.onDidChangeStatus(async () => {
-      const status = await this._gateway.getStatus();
+    this._gatewayAccessor = _gatewayAccessor;
+    void this._init();
+  }
+  static viewType = "copilotApiControls";
+  _view;
+  // Full editor panel singleton
+  static currentPanel;
+  // Track previous state to prevent unnecessary re-renders
+  _lastRunningState;
+  static panelDisposables = [];
+  _gateway;
+  async _init() {
+  }
+  async resolveWebviewView(webviewView, context, _token) {
+    this._view = webviewView;
+    this._gateway = await this._gatewayAccessor();
+    this._hookEvents(this._gateway);
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._extensionUri]
+    };
+    const updateHtml = async () => {
+      if (this._gateway) {
+        webviewView.webview.html = await this._getSidebarHtml(webviewView.webview);
+      }
+    };
+    await updateHtml();
+    webviewView.webview.onDidReceiveMessage(async (data) => {
+      if (!this._gateway) {
+        return;
+      }
+      switch (data.type) {
+        case "openDashboard":
+          await _CopilotPanel.createOrShow(this._extensionUri, this._gatewayAccessor);
+          break;
+        case "startServer":
+          void this._gateway.startServer();
+          break;
+        case "stopServer":
+          void this._gateway.stopServer();
+          break;
+        case "openSwagger": {
+          const status = await this._gateway.getStatus();
+          const swaggerUrl = `http://${status.config.host}:${status.config.port}/docs`;
+          vscode5.env.openExternal(vscode5.Uri.parse(swaggerUrl));
+          break;
+        }
+        case "openWiki":
+          await _CopilotPanel.openWiki(this._extensionUri, this._gateway);
+          break;
+        case "openUrl":
+          if (typeof data.value === "string") {
+            void vscode5.commands.executeCommand("vscode.open", vscode5.Uri.parse(data.value));
+          }
+          break;
+        case "editSystemPrompt":
+          void vscode5.commands.executeCommand("github-copilot-api-vscode.editSystemPrompt");
+          break;
+        default:
+          _CopilotPanel.handleMessage(data, this._gateway);
+      }
+    });
+  }
+  _hookEvents(gateway2) {
+    gateway2.onDidChangeStatus(async () => {
+      const status = await gateway2.getStatus();
       if (this._lastRunningState === status.running) {
         if (this._view) {
           this._view.webview.postMessage({ type: "statsData", data: status.stats });
@@ -54066,10 +54223,10 @@ var CopilotPanel = class _CopilotPanel {
         this._view.webview.html = await this._getSidebarHtml(this._view.webview);
       }
       if (_CopilotPanel.currentPanel) {
-        _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, this._gateway);
+        _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
       }
     });
-    this._gateway.onDidLogRequest((log) => {
+    gateway2.onDidLogRequest((log) => {
       if (this._view) {
         this._view.webview.postMessage({ type: "liveLog", value: log });
       }
@@ -54077,7 +54234,7 @@ var CopilotPanel = class _CopilotPanel {
         _CopilotPanel.currentPanel.webview.postMessage({ type: "liveLog", value: log });
       }
     });
-    this._gateway.onDidLogRequestStart((startLog) => {
+    gateway2.onDidLogRequestStart((startLog) => {
       if (this._view) {
         this._view.webview.postMessage({ type: "liveLogStart", value: startLog });
       }
@@ -54086,22 +54243,16 @@ var CopilotPanel = class _CopilotPanel {
       }
     });
   }
-  static viewType = "copilotApiControls";
-  _view;
-  // Full editor panel singleton
-  static currentPanel;
-  // Track previous state to prevent unnecessary re-renders
-  _lastRunningState;
-  static panelDisposables = [];
   /**
    * Opens the dashboard as a full-size editor panel (not a sidebar view).
    * @param scrollTarget Optional target to scroll to after opening (e.g., 'wiki')
    */
-  static async createOrShow(extensionUri, gateway, scrollTarget) {
+  static async createOrShow(extensionUri, gatewayAccessor, scrollTarget) {
     const column = vscode5.window.activeTextEditor?.viewColumn ?? vscode5.ViewColumn.One;
+    const gateway2 = await gatewayAccessor();
     if (_CopilotPanel.currentPanel) {
       _CopilotPanel.currentPanel.reveal(column);
-      _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+      _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
       if (scrollTarget) {
         _CopilotPanel.currentPanel.webview.postMessage({ type: "scrollTo", target: scrollTarget });
       }
@@ -54118,7 +54269,7 @@ var CopilotPanel = class _CopilotPanel {
       }
     );
     _CopilotPanel.currentPanel = panel;
-    panel.webview.html = await _CopilotPanel.getPanelHtml(panel.webview, gateway);
+    panel.webview.html = await _CopilotPanel.getPanelHtml(panel.webview, gateway2);
     if (scrollTarget) {
       setTimeout(() => {
         panel.webview.postMessage({ type: "scrollTo", target: scrollTarget });
@@ -54126,7 +54277,7 @@ var CopilotPanel = class _CopilotPanel {
     }
     panel.webview.onDidReceiveMessage(
       (data) => {
-        _CopilotPanel.handleMessage(data, gateway);
+        _CopilotPanel.handleMessage(data, gateway2);
       },
       void 0,
       _CopilotPanel.panelDisposables
@@ -54144,7 +54295,7 @@ var CopilotPanel = class _CopilotPanel {
   /**
    * Opens the API Usage Guide (Wiki) as a separate editor panel.
    */
-  static async openWiki(extensionUri, gateway) {
+  static async openWiki(extensionUri, gateway2) {
     const column = vscode5.window.activeTextEditor?.viewColumn ?? vscode5.ViewColumn.One;
     if (_CopilotPanel.wikiPanel) {
       _CopilotPanel.wikiPanel.reveal(column);
@@ -54161,7 +54312,7 @@ var CopilotPanel = class _CopilotPanel {
       }
     );
     _CopilotPanel.wikiPanel = panel;
-    panel.webview.html = await _CopilotPanel.getWikiHtml(panel.webview, gateway);
+    panel.webview.html = await _CopilotPanel.getWikiHtml(panel.webview, gateway2);
     panel.onDidDispose(() => {
       _CopilotPanel.wikiPanel = void 0;
     });
@@ -54169,10 +54320,22 @@ var CopilotPanel = class _CopilotPanel {
   /**
    * Generates the HTML for the Wiki panel
    */
-  static async getWikiHtml(webview, gateway) {
+  static async getWikiHtml(webview, gateway2) {
     const nonce = getNonce();
-    const status = await gateway.getStatus();
+    const status = await gateway2.getStatus();
     const config2 = status.config;
+    const isRunning = status.running;
+    const activeConnections = gateway2.getServerStatus().activeConnections;
+    const auditService = gateway2.getAuditService();
+    const lifetime = await auditService.getLifetimeStats();
+    const today = await auditService.getTodayStats();
+    const PRICE_IN = 2.5 / 1e6;
+    const PRICE_OUT = 10 / 1e6;
+    const savedTotal = lifetime.totalTokensIn * PRICE_IN + lifetime.totalTokensOut * PRICE_OUT;
+    const savedToday = today.tokensIn * PRICE_IN + today.tokensOut * PRICE_OUT;
+    const formatMoney = (amount) => {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    };
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -54364,31 +54527,56 @@ for await (const chunk of stream) {
 
             <div class="tool-card" style="border-left-color: #ef4444;">
                 <code>vscode_get_diagnostics</code>
-                <div class="muted" style="font-size: 11px; margin-top: 4px;">Get errors and warnings from Problems panel</div>
-            </div>
+            <h4 style="margin-top: 0;">\u{1F50C} Model Context Protocol (MCP)</h4>
+            <p>Connect GitHub Copilot to your local tools and data using the <a href="https://modelcontextprotocol.io">Model Context Protocol</a>.</p>
 
-            <div class="tool-card" style="border-left-color: #8b5cf6;">
-                <code>vscode_get_active_editor</code>
-                <div class="muted" style="font-size: 11px; margin-top: 4px;">Get content and cursor position of current file</div>
+            <h4>1. Configuration</h4>
+            <p>Edit your VS Code <code>settings.json</code> to add MCP servers:</p>
+            <pre>{
+  "githubCopilotApi.mcp.enabled": true,
+  "githubCopilotApi.mcp.servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/projects"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+    }
+  }
+}</pre>
+
+            <h4>2. Usage</h4>
+            <p>Once configured, restart the server. Tools provided by these servers (e.g., <code>read_file</code>, <code>query_database</code>) will be automatically available to the API.</p>
+            <p>You can then use them in your API requests by enabling tool use, or letting your agent framework discover them.</p>
+
+            <div class="tool-card">
+                <strong>\u{1F4A1} Pro Tip:</strong> Use the "Tools" tab in the dashboard (coming soon) to verify connected servers and see available tools.
             </div>
         </div>
     </div>
 
     <script nonce="${nonce}">
-        document.querySelectorAll('.wiki-tab').forEach(tab => {
+        const tabs = document.querySelectorAll('.wiki-tab');
+        const panels = document.querySelectorAll('.wiki-panel');
+
+        tabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                const targetTab = tab.getAttribute('data-tab');
-                document.querySelectorAll('.wiki-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.wiki-panel').forEach(p => p.classList.remove('active'));
+                // Remove active class from all
+                tabs.forEach(t => t.classList.remove('active'));
+                panels.forEach(p => p.classList.remove('active'));
+
+                // Add active class to clicked tab and corresponding panel
                 tab.classList.add('active');
-                document.querySelector('[data-panel="' + targetTab + '"]').classList.add('active');
+                const panelId = tab.getAttribute('data-tab');
+                document.querySelector(\`.wiki-panel[data-panel="\${panelId}"]\`).classList.add('active');
             });
         });
     </script>
 </body>
 </html>`;
   }
-  static handleMessage(data, gateway) {
+  static handleMessage(data, gateway2) {
     switch (data.type) {
       case "openChat":
         void vscode5.commands.executeCommand("github-copilot-api-vscode.openCopilotChat");
@@ -54400,10 +54588,10 @@ for await (const chunk of stream) {
         void vscode5.commands.executeCommand("github-copilot-api-vscode.showServerControls");
         break;
       case "startServer":
-        void gateway.startServer();
+        void gateway2.startServer();
         break;
       case "stopServer":
-        void gateway.stopServer();
+        void gateway2.stopServer();
         break;
       case "openUrl":
         console.log("[CopilotPanel] Opening URL:", data.value);
@@ -54412,73 +54600,73 @@ for await (const chunk of stream) {
         }
         break;
       case "toggleHttp":
-        void gateway.toggleHttp();
+        void gateway2.toggleHttp();
         break;
       case "toggleWs":
-        void gateway.toggleWebSocket();
+        void gateway2.toggleWebSocket();
         break;
       case "toggleLogging":
-        void gateway.toggleLogging();
+        void gateway2.toggleLogging();
         break;
       case "toggleHttps":
-        void gateway.toggleHttps();
+        void gateway2.toggleHttps();
         break;
       case "setApiKey":
         if (typeof data.value === "string") {
-          void gateway.setApiKey(data.value);
+          void gateway2.setApiKey(data.value);
         }
         break;
       case "setRateLimit":
         if (typeof data.value === "number") {
-          void gateway.setRateLimit(data.value);
+          void gateway2.setRateLimit(data.value);
         }
         break;
       case "hostLocal":
-        void gateway.setHost("127.0.0.1");
+        void gateway2.setHost("127.0.0.1");
         break;
       case "hostLan":
-        void gateway.setHost("0.0.0.0");
+        void gateway2.setHost("0.0.0.0");
         break;
       case "setHost":
         if (typeof data.value === "string") {
-          void gateway.setHost(data.value);
+          void gateway2.setHost(data.value);
         }
         break;
       case "setPort":
         if (typeof data.value === "number") {
-          void gateway.setPort(data.value);
+          void gateway2.setPort(data.value);
         }
         break;
       case "setModel":
         if (typeof data.value === "string") {
-          void gateway.setDefaultModel(data.value);
+          void gateway2.setDefaultModel(data.value);
         }
         break;
       case "clearHistory":
-        gateway.clearHistory();
+        gateway2.clearHistory();
         break;
       case "toggleMcp":
         if (typeof data.value === "boolean") {
-          void gateway.toggleMcp(data.value);
+          void gateway2.toggleMcp(data.value);
         }
         break;
       case "addRedactionPattern":
         if (data.value && typeof data.value === "object") {
           const { name, pattern } = data.value;
-          void gateway.addRedactionPattern(name, pattern).then(async (success2) => {
+          void gateway2.addRedactionPattern(name, pattern).then(async (success2) => {
             if (!success2) {
               void vscode5.window.showErrorMessage("Invalid regex pattern");
             } else if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "removeRedactionPattern":
         if (typeof data.value === "string") {
-          void gateway.removeRedactionPattern(data.value).then(async () => {
+          void gateway2.removeRedactionPattern(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
@@ -54486,68 +54674,68 @@ for await (const chunk of stream) {
       case "toggleRedactionPattern":
         if (data.value && typeof data.value === "object") {
           const { id, enabled } = data.value;
-          void gateway.toggleRedactionPattern(id, enabled);
+          void gateway2.toggleRedactionPattern(id, enabled);
         }
         break;
       case "addIpAllowlistEntry":
         if (typeof data.value === "string") {
-          void gateway.addIpAllowlistEntry(data.value).then(async (success2) => {
+          void gateway2.addIpAllowlistEntry(data.value).then(async (success2) => {
             if (!success2) {
               void vscode5.window.showErrorMessage("Invalid IP address or CIDR range");
             } else if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "removeIpAllowlistEntry":
         if (typeof data.value === "string") {
-          void gateway.removeIpAllowlistEntry(data.value).then(async () => {
+          void gateway2.removeIpAllowlistEntry(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "setRequestTimeout":
         if (typeof data.value === "number") {
-          void gateway.setRequestTimeout(data.value).then(async () => {
+          void gateway2.setRequestTimeout(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "setMaxPayloadSize":
         if (typeof data.value === "number") {
-          void gateway.setMaxPayloadSize(data.value).then(async () => {
+          void gateway2.setMaxPayloadSize(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "setMaxConnectionsPerIp":
         if (typeof data.value === "number") {
-          void gateway.setMaxConnectionsPerIp(data.value).then(async () => {
+          void gateway2.setMaxConnectionsPerIp(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "setMaxConcurrency":
         if (typeof data.value === "number") {
-          void gateway.setMaxConcurrency(data.value).then(async () => {
+          void gateway2.setMaxConcurrency(data.value).then(async () => {
             if (_CopilotPanel.currentPanel) {
-              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway);
+              _CopilotPanel.currentPanel.webview.html = await _CopilotPanel.getPanelHtml(_CopilotPanel.currentPanel.webview, gateway2);
             }
           });
         }
         break;
       case "getHistory":
         if (_CopilotPanel.currentPanel) {
-          const history = gateway.getHistory(50);
+          const history = gateway2.getHistory(50);
           void _CopilotPanel.currentPanel.webview.postMessage({
             type: "historyData",
             data: history
@@ -54558,13 +54746,13 @@ for await (const chunk of stream) {
         if (_CopilotPanel.currentPanel) {
           void _CopilotPanel.currentPanel.webview.postMessage({
             type: "statsData",
-            data: gateway.getStats()
+            data: gateway2.getStats()
           });
         }
         break;
       case "getAuditStats":
         if (_CopilotPanel.currentPanel) {
-          void gateway.getDailyStats(30).then((stats) => {
+          void gateway2.getDailyStats(30).then((stats) => {
             void _CopilotPanel.currentPanel?.webview.postMessage({
               type: "auditStatsData",
               data: stats
@@ -54578,7 +54766,7 @@ for await (const chunk of stream) {
           const val = data.value || {};
           const page = val.page || 1;
           const pageSize = val.pageSize || 10;
-          gateway.getAuditLogs(page, pageSize).then((res) => {
+          gateway2.getAuditLogs(page, pageSize).then((res) => {
             console.log("[CopilotPanel] Got audit logs:", res.total, "total,", res.entries.length, "entries");
             void _CopilotPanel.currentPanel?.webview.postMessage({
               type: "auditLogData",
@@ -54602,12 +54790,15 @@ for await (const chunk of stream) {
         }
         break;
       case "openLogFolder":
-        const logPath = gateway.getLogFolderPath();
+        const logPath = gateway2.getLogFolderPath();
         if (logPath) {
           void vscode5.commands.executeCommand("revealFileInOS", vscode5.Uri.file(logPath));
         } else {
           void vscode5.window.showErrorMessage("Log folder not found");
         }
+        break;
+      case "editSystemPrompt":
+        void vscode5.commands.executeCommand("github-copilot-api-vscode.editSystemPrompt");
         break;
     }
   }
@@ -54616,6 +54807,9 @@ for await (const chunk of stream) {
    */
   async _getSidebarHtml(webview) {
     const nonce = getNonce();
+    if (!this._gateway) {
+      return "<p>Loading...</p>";
+    }
     const status = await this._gateway.getStatus();
     const isRunning = status.running;
     const statusColor = isRunning ? "var(--vscode-testing-iconPassed)" : "var(--vscode-testing-iconFailed)";
@@ -54701,6 +54895,7 @@ for await (const chunk of stream) {
         <div class="section-title">\u26A1 Actions</div>
         <div class="actions">
             <button id="btn-toggle" class="secondary">${isRunning ? "\u23F9 Stop Server" : "\u25B6 Start Server"}</button>
+            <button id="btn-edit-system-prompt" class="secondary">\u{1F4DD} System Prompt</button>
             <button id="btn-swagger" class="secondary">\u{1F4DD} Swagger API</button>
             <button id="btn-wiki" class="secondary">\u{1F4DA} Wiki</button>
             <button id="btn-docs" class="secondary">\u{1F4DA} How to Use</button>
@@ -54719,14 +54914,6 @@ for await (const chunk of stream) {
             <div class="stat-card">
                 <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 10px; opacity: 0.6;">ms</span></div>
                 <div class="stat-label">Latency</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="stat-total">${stats.totalRequests}</div>
-                <div class="stat-label">Total Reqs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="stat-errors">${realtimeStats.errorRate}<span style="font-size: 10px; opacity: 0.6;">%</span></div>
-                <div class="stat-label">Errors</div>
             </div>
         </div>
 
@@ -54806,6 +54993,7 @@ print(response.choices[0].message.content)\`;
         document.getElementById('btn-copy-python').addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
         document.getElementById('btn-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? "stopServer" : "startServer"}' }));
+        document.getElementById('btn-edit-system-prompt').addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-wiki').addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
@@ -54826,9 +55014,9 @@ print(response.choices[0].message.content)\`;
     }
     return num.toString();
   }
-  static async getPanelHtml(webview, gateway) {
+  static async getPanelHtml(webview, gateway2) {
     const nonce = getNonce();
-    const status = await gateway.getStatus();
+    const status = await gateway2.getStatus();
     const config2 = status.config;
     const isRunning = status.running;
     const statusColor = isRunning ? "var(--vscode-testing-iconPassed)" : "var(--vscode-testing-iconFailed)";
@@ -54837,6 +55025,17 @@ print(response.choices[0].message.content)\`;
     const networkInfo = status.networkInfo;
     const displayHost = config2.host === "0.0.0.0" && networkInfo?.localIPs?.length ? networkInfo.localIPs[0] : config2.host;
     const url2 = `${protocol}://${displayHost}:${config2.port}`;
+    const activeConnections = gateway2.getServerStatus().activeConnections;
+    const auditService = gateway2.getAuditService();
+    const lifetimeStats = await auditService.getLifetimeStats();
+    const todayStats = await auditService.getTodayStats();
+    const PRICE_IN = 2.5 / 1e6;
+    const PRICE_OUT = 10 / 1e6;
+    const savedTotal = lifetimeStats.totalTokensIn * PRICE_IN + lifetimeStats.totalTokensOut * PRICE_OUT;
+    const savedToday = todayStats.tokensIn * PRICE_IN + todayStats.tokensOut * PRICE_OUT;
+    const formatMoney = (amount) => {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    };
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -54903,9 +55102,23 @@ print(response.choices[0].message.content)\`;
             transform: translateY(-1px);
         }
         .card.full-width { grid-column: 1 / -1; }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .stat-sub {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 4px;
+        }
+        .money-saved {
+            color: var(--vscode-testing-iconPassed); /* Green-ish usually */
+        }
         
         /* Grid */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
         .info-grid { display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 13px; align-items: center; }
         .label { color: var(--vscode-descriptionForeground); font-weight: 500; }
         .value { color: var(--vscode-foreground); font-family: var(--vscode-editor-font-family); }
@@ -54936,25 +55149,31 @@ print(response.choices[0].message.content)\`;
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
         }
-        button.secondary:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
-        
-        button.success { background-color: var(--vscode-testing-iconPassed); color: var(--vscode-editor-background); } /* Ensure contrast on success */
-        button.danger { background-color: var(--vscode-testing-iconFailed); color: var(--vscode-editor-background); }
-
-        /* Forms */
-        input, select, textarea {
-            width: 100%; padding: 8px 12px;
-            font-size: 13px; font-family: inherit;
-            border-radius: 6px;
-            border: 1px solid var(--vscode-input-border);
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.15s ease;
+        button.secondary:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground);
         }
-        input:focus, select:focus, textarea:focus {
+
+        .section-title {
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+        }
+        .section-title::after {
+            content: ''; flex: 1; height: 1px; background-color: var(--vscode-widget-border); opacity: 0.5;
+        }
+
+        /* Inputs */
+        input[type="text"], input[type="number"], select {
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-widget-border);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: inherit; font-size: 13px;
+        }
+        input:focus, select:focus {
             border-color: var(--vscode-focusBorder);
+            outline: 1px solid var(--vscode-focusBorder);
         }
         
         .switch { position: relative; width: 40px; height: 22px; }
@@ -55220,6 +55439,31 @@ print(response.choices[0].message.content)\`;
             </div>
         </div>
 
+        <!-- Stats Grid -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u{1F4B8} Est. Savings</h3>
+                <div style="font-size: 28px; font-weight: 600; color: var(--vscode-testing-iconPassed);">${formatMoney(savedTotal)}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">+${formatMoney(savedToday)} today</div>
+                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4o pricing</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u{1F4CA} Traffic</h3>
+                <div style="font-size: 28px; font-weight: 600;">${lifetimeStats.totalRequests || 0}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Total Requests</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u26A1 Latency</h3>
+                <div style="font-size: 28px; font-weight: 600;">${todayStats.avgLatency || 0}<span style="font-size: 14px; opacity: 0.6;">ms</span></div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Avg Today</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u{1F465} Connections</h3>
+                <div style="font-size: 28px; font-weight: 600;">${activeConnections}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Active Clients</div>
+            </div>
+        </div>
+
         <!-- Copilot Health Banner -->
         ${!status.copilot.ready ? `
         <div style="background: var(--vscode-statusBarItem-warningBackground); color: var(--vscode-statusBarItem-warningForeground); padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; font-weight: 500; border: 1px solid rgba(0,0,0,0.1);">
@@ -55244,40 +55488,11 @@ print(response.choices[0].message.content)\`;
                     <span id="server-status-text" style="font-size: 16px;">${statusText}</span>
                 </div>
                 <div class="muted">
-                    v${gateway.getVersion()}
+                    v${gateway2.getVersion()}
                 </div>
             </div>
 
-            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Requests</div>
-                    <div class="value" style="font-size: 20px;" id="stat-requests">${status.stats?.totalRequests ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Req/Min</div>
-                    <div class="value" style="font-size: 20px;" id="stat-rpm">0</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Latency</div>
-                    <div class="value" style="font-size: 20px;" id="stat-latency">0ms</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Error Rate</div>
-                    <div class="value" style="font-size: 20px;" id="stat-errors">0%</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Tokens In</div>
-                    <div class="value" style="font-size: 20px;" id="stat-tokens-in">${status.stats?.totalTokensIn ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Tokens Out</div>
-                    <div class="value" style="font-size: 20px;" id="stat-tokens-out">${status.stats?.totalTokensOut ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Uptime</div>
-                    <div class="value" style="font-size: 20px;" id="stat-uptime">0m</div>
-                </div>
-            </div>
+
 
             <div class="info-grid">
                 <div class="label">Connection</div>
@@ -55596,6 +55811,16 @@ print(response.choices[0].message.content)\`;
         </div>
 
         <div class="card full-width">
+            <h3>\u{1F9E0} System Prompt</h3>
+            <p class="muted" style="margin-bottom: 12px;">
+                Define a default system persona/instruction for all API requests that don't provide one.
+            </p>
+            <div class="actions">
+                <button class="secondary" id="btn-edit-system-prompt" style="width: auto; padding: 8px 16px; font-weight: 600;">\u{1F4DD} Edit Default System Prompt</button>
+            </div>
+        </div>
+
+        <div class="card full-width">
             <h3>\u{1F4DA} API Documentation</h3>
             <p class="muted" style="margin-bottom: 16px;">
                 The gateway supports multiple API formats. Use the endpoints below with your favorite SDKs.
@@ -55624,7 +55849,7 @@ print(response.choices[0].message.content)\`;
             </div>
 
             <div class="actions" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 16px;">
-                <a href="http://${config2.host}:${config2.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\u{1F4DD} Swagger UI</a>
+                <a href="http://${config2.host}:${config2.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\u{1F4D1} Swagger UI</a>
                 <a href="http://${config2.host}:${config2.port}/openapi.json" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\u{1F4C4} OpenAPI JSON</a>
             </div>
         </div>
@@ -55643,7 +55868,7 @@ print(response.choices[0].message.content)\`;
                     </div>
                 </div>
                 <div class="muted" style="font-size: 11px; text-align: right;">
-                    GitHub Copilot API Gateway v${gateway.getVersion()}<br>
+                    GitHub Copilot API Gateway v${gateway2.getVersion()}<br>
                     Made with \u2764\uFE0F and \u2615
                 </div>
             </div>
@@ -55707,6 +55932,13 @@ print(response.choices[0].message.content)\`;
         if (btnDocs) {
             btnDocs.onclick = function() {
                 vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' });
+            };
+        }
+
+        const btnEditSystemPrompt = document.getElementById('btn-edit-system-prompt');
+        if (btnEditSystemPrompt) {
+            btnEditSystemPrompt.onclick = function() {
+                vscode.postMessage({ type: 'editSystemPrompt' });
             };
         }
 
@@ -56404,41 +56636,6 @@ vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
     </body>
     </html>`;
   }
-  async resolveWebviewView(webviewView, _context, _token) {
-    this._view = webviewView;
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this._extensionUri]
-    };
-    webviewView.webview.html = await this._getSidebarHtml(webviewView.webview);
-    webviewView.webview.onDidReceiveMessage(async (data) => {
-      switch (data.type) {
-        case "openDashboard":
-          await _CopilotPanel.createOrShow(this._extensionUri, this._gateway);
-          break;
-        case "startServer":
-          void this._gateway.startServer();
-          break;
-        case "stopServer":
-          void this._gateway.stopServer();
-          break;
-        case "openSwagger": {
-          const status = await this._gateway.getStatus();
-          const swaggerUrl = `http://${status.config.host}:${status.config.port}/docs`;
-          vscode5.env.openExternal(vscode5.Uri.parse(swaggerUrl));
-          break;
-        }
-        case "openWiki":
-          await _CopilotPanel.openWiki(this._extensionUri, this._gateway);
-          break;
-        case "openUrl":
-          if (typeof data.value === "string") {
-            void vscode5.commands.executeCommand("vscode.open", vscode5.Uri.parse(data.value));
-          }
-          break;
-      }
-    });
-  }
 };
 function getNonce() {
   let text = "";
@@ -56480,19 +56677,21 @@ open "${linkUrl}"
 }
 
 // src/extension.ts
+var gateway;
 function activate(context) {
   const output = vscode7.window.createOutputChannel("GitHub Copilot API Server");
   context.subscriptions.push(output);
   const statusItem = vscode7.window.createStatusBarItem(vscode7.StatusBarAlignment.Left, 100);
   statusItem.command = "github-copilot-api-vscode.showServerControls";
   context.subscriptions.push(statusItem);
-  const gateway = new CopilotApiGateway(output, statusItem, context);
-  context.subscriptions.push(gateway);
-  const provider = new CopilotPanel(context.extensionUri, gateway);
-  context.subscriptions.push(
-    vscode7.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
-  );
   const updateStatusBar = async () => {
+    if (!gateway) {
+      statusItem.text = "$(circle-slash) Copilot API: OFF";
+      statusItem.tooltip = "Copilot API Gateway is stopped (Standby Mode)";
+      statusItem.backgroundColor = void 0;
+      statusItem.show();
+      return;
+    }
     const status = await gateway.getStatus();
     if (status.running) {
       const rpm = status.stats.requestsPerMinute;
@@ -56549,27 +56748,42 @@ Server is stopped. Click to start or manage.
     }
   };
   let wasRunning = false;
-  context.subscriptions.push(gateway.onDidChangeStatus(async () => {
-    await updateStatusBar();
-    const status = await gateway.getStatus();
-    if (status.running && !wasRunning) {
-      const config3 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
-      if (config3.get("showNotifications", true)) {
-        const displayHost = status.config.host === "0.0.0.0" && status.networkInfo?.localIPs?.length ? status.networkInfo.localIPs[0] : status.config.host;
-        const protocol = status.isHttps ? "https" : "http";
-        const selection = await vscode7.window.showInformationMessage(
-          `GitHub Copilot API Server started at ${protocol}://${displayHost}:${status.config.port}`,
-          "Open Dashboard"
-        );
-        if (selection === "Open Dashboard") {
-          void vscode7.commands.executeCommand("github-copilot-api-vscode.openDashboard");
+  const getGateway = async () => {
+    if (gateway) {
+      return gateway;
+    }
+    const gw = new CopilotApiGateway(output, statusItem, context);
+    gateway = gw;
+    context.subscriptions.push(gw);
+    context.subscriptions.push(gw.onDidChangeStatus(async () => {
+      await updateStatusBar();
+      const status = await gw.getStatus();
+      if (status.running && !wasRunning) {
+        const config3 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
+        if (config3.get("showNotifications", true)) {
+          const displayHost = status.config.host === "0.0.0.0" && status.networkInfo?.localIPs?.length ? status.networkInfo.localIPs[0] : status.config.host;
+          const protocol = status.isHttps ? "https" : "http";
+          const selection = await vscode7.window.showInformationMessage(
+            `GitHub Copilot API Server started at ${protocol}://${displayHost}:${status.config.port}`,
+            "Open Dashboard"
+          );
+          if (selection === "Open Dashboard") {
+            void vscode7.commands.executeCommand("github-copilot-api-vscode.openDashboard");
+          }
         }
       }
-    }
-    wasRunning = status.running;
-  }));
+      wasRunning = status.running;
+    }));
+    await updateStatusBar();
+    return gw;
+  };
+  const provider = new CopilotPanel(context.extensionUri, getGateway);
+  context.subscriptions.push(
+    vscode7.window.registerWebviewViewProvider(CopilotPanel.viewType, provider)
+  );
   const showServerControls = vscode7.commands.registerCommand("github-copilot-api-vscode.showServerControls", async () => {
-    const status = await gateway.getStatus();
+    const gw = await getGateway();
+    const status = await gw.getStatus();
     const items = [];
     if (status.running) {
       items.push({
@@ -56613,26 +56827,29 @@ Server is stopped. Click to start or manage.
       return;
     }
     if (selection.label.includes("Stop Server")) {
-      await gateway.stopServer();
+      await gw.stopServer();
     } else if (selection.label.includes("Start Server")) {
-      await gateway.startServer();
+      await gw.startServer();
     } else if (selection.label.includes("Restart Server")) {
-      await gateway.restart();
+      await gw.restart();
     } else if (selection.label.includes("Open Full Dashboard")) {
-      CopilotPanel.createOrShow(context.extensionUri, gateway);
+      CopilotPanel.createOrShow(context.extensionUri, getGateway);
     } else if (selection.label.includes("Show Logs")) {
       output.show();
     }
   });
-  void updateStatusBar();
+  statusItem.text = "$(circle-slash) Copilot API: OFF";
+  statusItem.show();
   const config2 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
   const enabled = config2.get("enabled", false);
   const autoStart = config2.get("autoStart", false);
   output.appendLine(`[DEBUG] Activation. Enabled: ${enabled}, AutoStart: ${autoStart}`);
   if (enabled || autoStart) {
-    void gateway.start().catch((error2) => {
-      output.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error2)}`);
-      void vscode7.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error2)}`);
+    getGateway().then((gw) => {
+      return gw.start().catch((error2) => {
+        output.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] ERROR Failed to start API server: ${getErrorMessage(error2)}`);
+        void vscode7.window.showErrorMessage(`Failed to start Copilot API server: ${getErrorMessage(error2)}`);
+      });
     });
   }
   const openChatCommand = vscode7.commands.registerCommand("github-copilot-api-vscode.openCopilotChat", async () => {
@@ -56687,7 +56904,7 @@ Server is stopped. Click to start or manage.
     });
   });
   const openDashboard = vscode7.commands.registerCommand("github-copilot-api-vscode.openDashboard", () => {
-    CopilotPanel.createOrShow(context.extensionUri, gateway);
+    CopilotPanel.createOrShow(context.extensionUri, getGateway);
   });
   const createShortcutCommand = vscode7.commands.registerCommand("github-copilot-api-vscode.createDesktopShortcut", async () => {
     await createDesktopShortcut();
@@ -56697,21 +56914,65 @@ Server is stopped. Click to start or manage.
       const path4 = uri.path;
       output.appendLine(`[URI Handler] Received URI: ${uri.toString()} (path: ${path4})`);
       if (path4 === "/dashboard") {
-        CopilotPanel.createOrShow(context.extensionUri, gateway);
+        CopilotPanel.createOrShow(context.extensionUri, getGateway);
       } else if (path4 === "/start") {
-        void gateway.startServer().then(() => {
+        void getGateway().then((gw) => gw.startServer().then(() => {
           void vscode7.window.showInformationMessage("Copilot API Server started via shortcut");
-        });
+        }));
       } else if (path4 === "/stop") {
-        void gateway.stopServer().then(() => {
-          void vscode7.window.showInformationMessage("Copilot API Server stopped via shortcut");
-        });
+        if (gateway) {
+          void gateway.stopServer().then(() => {
+            void vscode7.window.showInformationMessage("Copilot API Server stopped via shortcut");
+          });
+        }
       } else {
         void vscode7.window.showWarningMessage(`Unknown shortcut path: ${path4}`);
       }
     }
   }));
-  context.subscriptions.push(openChatCommand, askChatCommand, askSelectionCommand, createShortcutCommand, openDashboard);
+  const PROMPT_HEADER = `
+# \u2139\uFE0F DEFAULT SYSTEM PROMPT
+# -------------------------------------------------------------------------------------
+# This prompt is valid ONLY when no system instruction is provided by the client tool.
+# It acts as a fallback and does NOT permanently override API requests.
+#
+# EDIT BELOW THIS LINE - SAVE TO APPLY
+# -------------------------------------------------------------------------------------
+
+`.trimStart();
+  const editSystemPrompt = vscode7.commands.registerCommand("github-copilot-api-vscode.editSystemPrompt", async () => {
+    const storageUri = context.globalStorageUri;
+    try {
+      await vscode7.workspace.fs.createDirectory(storageUri);
+    } catch {
+    }
+    const fileUri = vscode7.Uri.joinPath(storageUri, "system_prompt.md");
+    const config3 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
+    const currentPrompt = config3.get("defaultSystemPrompt", "");
+    const content = PROMPT_HEADER + (currentPrompt || "");
+    await vscode7.workspace.fs.writeFile(fileUri, Buffer.from(content, "utf8"));
+    const doc = await vscode7.workspace.openTextDocument(fileUri);
+    await vscode7.window.showTextDocument(doc);
+  });
+  context.subscriptions.push(vscode7.workspace.onDidSaveTextDocument(async (doc) => {
+    if (doc.uri.scheme === "file" && doc.uri.fsPath.endsWith("system_prompt.md")) {
+      if (doc.uri.fsPath.includes(context.globalStorageUri.fsPath)) {
+        const text = doc.getText();
+        const separator = "# -------------------------------------------------------------------------------------";
+        const lastSeparatorIndex = text.lastIndexOf(separator);
+        let newPrompt = text;
+        if (lastSeparatorIndex !== -1) {
+          newPrompt = text.substring(lastSeparatorIndex + separator.length).trim();
+        } else {
+          newPrompt = text.trim();
+        }
+        const config3 = vscode7.workspace.getConfiguration("githubCopilotApi.server");
+        await config3.update("defaultSystemPrompt", newPrompt, vscode7.ConfigurationTarget.Global);
+        void vscode7.window.setStatusBarMessage("$(check) Default system prompt updated", 3e3);
+      }
+    }
+  }));
+  context.subscriptions.push(openChatCommand, askChatCommand, askSelectionCommand, createShortcutCommand, openDashboard, showServerControls, editSystemPrompt);
 }
 function deactivate() {
 }

@@ -11,12 +11,85 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     private _lastRunningState: boolean | undefined;
     private static panelDisposables: vscode.Disposable[] = [];
 
+    private _gateway: CopilotApiGateway | undefined;
+
     constructor(
         private readonly _extensionUri: vscode.Uri,
-        private readonly _gateway: CopilotApiGateway
+        private readonly _gatewayAccessor: () => Promise<CopilotApiGateway>
     ) {
-        this._gateway.onDidChangeStatus(async () => {
-            const status = await this._gateway.getStatus();
+        // Initialize gateway if already available, or wait for first access
+        void this._init();
+    }
+
+    private async _init() {
+        // We don't force creation here. If it's created, we hook up.
+        // But how do we know if it's created?
+        // We can poll or rely on the accessor being called when the view is resolved.
+        // Actually, for the sidebar, resolveWebviewView will be called.
+    }
+
+    public async resolveWebviewView(
+        webviewView: vscode.WebviewView,
+        context: vscode.WebviewViewResolveContext,
+        _token: vscode.CancellationToken,
+    ) {
+        this._view = webviewView;
+
+        // When view is resolved (visible), we MUST have the gateway
+        this._gateway = await this._gatewayAccessor();
+        this._hookEvents(this._gateway);
+
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this._extensionUri]
+        };
+
+        const updateHtml = async () => {
+            if (this._gateway) {
+                webviewView.webview.html = await this._getSidebarHtml(webviewView.webview);
+            }
+        };
+
+        await updateHtml();
+
+        webviewView.webview.onDidReceiveMessage(async data => {
+            if (!this._gateway) { return; }
+            switch (data.type) {
+                case 'openDashboard':
+                    await CopilotPanel.createOrShow(this._extensionUri, this._gatewayAccessor);
+                    break;
+                case 'startServer':
+                    void this._gateway.startServer();
+                    break;
+                case 'stopServer':
+                    void this._gateway.stopServer();
+                    break;
+                case 'openSwagger': {
+                    const status = await this._gateway.getStatus();
+                    const swaggerUrl = `http://${status.config.host}:${status.config.port}/docs`;
+                    vscode.env.openExternal(vscode.Uri.parse(swaggerUrl));
+                    break;
+                }
+                case 'openWiki':
+                    await CopilotPanel.openWiki(this._extensionUri, this._gateway);
+                    break;
+                case 'openUrl':
+                    if (typeof data.value === 'string') {
+                        void vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(data.value));
+                    }
+                    break;
+                case 'editSystemPrompt':
+                    void vscode.commands.executeCommand('github-copilot-api-vscode.editSystemPrompt');
+                    break;
+                default:
+                    CopilotPanel.handleMessage(data, this._gateway);
+            }
+        });
+    }
+
+    private _hookEvents(gateway: CopilotApiGateway) {
+        gateway.onDidChangeStatus(async () => {
+            const status = await gateway.getStatus();
 
             // Check if critical state changed (Running vs Stopped)
             // If just stats changed, send data update message instead of re-rendering HTML
@@ -42,10 +115,10 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             }
             // Also update the full panel if it's open
             if (CopilotPanel.currentPanel) {
-                CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, this._gateway);
+                CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
             }
         });
-        this._gateway.onDidLogRequest(log => {
+        gateway.onDidLogRequest(log => {
             // console.log('[CopilotPanel] onDidLogRequest fired', log.requestId);
             if (this._view) {
                 this._view.webview.postMessage({ type: 'liveLog', value: log });
@@ -54,7 +127,7 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 CopilotPanel.currentPanel.webview.postMessage({ type: 'liveLog', value: log });
             }
         });
-        this._gateway.onDidLogRequestStart(startLog => {
+        gateway.onDidLogRequestStart(startLog => {
             // Show pending request immediately in Live Log Tail
             if (this._view) {
                 this._view.webview.postMessage({ type: 'liveLogStart', value: startLog });
@@ -69,8 +142,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
      * Opens the dashboard as a full-size editor panel (not a sidebar view).
      * @param scrollTarget Optional target to scroll to after opening (e.g., 'wiki')
      */
-    public static async createOrShow(extensionUri: vscode.Uri, gateway: CopilotApiGateway, scrollTarget?: string): Promise<void> {
+    public static async createOrShow(extensionUri: vscode.Uri, gatewayAccessor: () => Promise<CopilotApiGateway>, scrollTarget?: string): Promise<void> {
         const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+        const gateway = await gatewayAccessor(); // Force init for dashboard
 
         if (CopilotPanel.currentPanel) {
             CopilotPanel.currentPanel.reveal(column);
@@ -162,6 +236,24 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         const nonce = getNonce();
         const status = await gateway.getStatus();
         const config = status.config;
+        const isRunning = status.running;
+        const activeConnections = gateway.getServerStatus().activeConnections;
+
+        // Calculate Savings
+        const auditService = gateway.getAuditService();
+        const lifetime = await auditService.getLifetimeStats();
+        const today = await auditService.getTodayStats();
+
+        // GPT-4o Pricing (approximate)
+        const PRICE_IN = 2.50 / 1000000;
+        const PRICE_OUT = 10.00 / 1000000;
+
+        const savedTotal = (lifetime.totalTokensIn * PRICE_IN) + (lifetime.totalTokensOut * PRICE_OUT);
+        const savedToday = (today.tokensIn * PRICE_IN) + (today.tokensOut * PRICE_OUT);
+
+        const formatMoney = (amount: number) => {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+        };
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -354,24 +446,49 @@ for await (const chunk of stream) {
 
             <div class="tool-card" style="border-left-color: #ef4444;">
                 <code>vscode_get_diagnostics</code>
-                <div class="muted" style="font-size: 11px; margin-top: 4px;">Get errors and warnings from Problems panel</div>
-            </div>
+            <h4 style="margin-top: 0;">🔌 Model Context Protocol (MCP)</h4>
+            <p>Connect GitHub Copilot to your local tools and data using the <a href="https://modelcontextprotocol.io">Model Context Protocol</a>.</p>
 
-            <div class="tool-card" style="border-left-color: #8b5cf6;">
-                <code>vscode_get_active_editor</code>
-                <div class="muted" style="font-size: 11px; margin-top: 4px;">Get content and cursor position of current file</div>
+            <h4>1. Configuration</h4>
+            <p>Edit your VS Code <code>settings.json</code> to add MCP servers:</p>
+            <pre>{
+  "githubCopilotApi.mcp.enabled": true,
+  "githubCopilotApi.mcp.servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/projects"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
+    }
+  }
+}</pre>
+
+            <h4>2. Usage</h4>
+            <p>Once configured, restart the server. Tools provided by these servers (e.g., <code>read_file</code>, <code>query_database</code>) will be automatically available to the API.</p>
+            <p>You can then use them in your API requests by enabling tool use, or letting your agent framework discover them.</p>
+
+            <div class="tool-card">
+                <strong>💡 Pro Tip:</strong> Use the "Tools" tab in the dashboard (coming soon) to verify connected servers and see available tools.
             </div>
         </div>
     </div>
 
     <script nonce="${nonce}">
-        document.querySelectorAll('.wiki-tab').forEach(tab => {
+        const tabs = document.querySelectorAll('.wiki-tab');
+        const panels = document.querySelectorAll('.wiki-panel');
+
+        tabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                const targetTab = tab.getAttribute('data-tab');
-                document.querySelectorAll('.wiki-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.wiki-panel').forEach(p => p.classList.remove('active'));
+                // Remove active class from all
+                tabs.forEach(t => t.classList.remove('active'));
+                panels.forEach(p => p.classList.remove('active'));
+
+                // Add active class to clicked tab and corresponding panel
                 tab.classList.add('active');
-                document.querySelector('[data-panel="' + targetTab + '"]').classList.add('active');
+                const panelId = tab.getAttribute('data-tab');
+                document.querySelector(\`.wiki-panel[data-panel="\${panelId}"]\`).classList.add('active');
             });
         });
     </script>
@@ -605,6 +722,9 @@ for await (const chunk of stream) {
                     void vscode.window.showErrorMessage('Log folder not found');
                 }
                 break;
+            case 'editSystemPrompt':
+                void vscode.commands.executeCommand('github-copilot-api-vscode.editSystemPrompt');
+                break;
         }
     }
 
@@ -613,6 +733,9 @@ for await (const chunk of stream) {
      */
     private async _getSidebarHtml(webview: vscode.Webview): Promise<string> {
         const nonce = getNonce();
+        if (!this._gateway) {
+            return '<p>Loading...</p>';
+        }
         const status = await this._gateway.getStatus();
         const isRunning = status.running;
         const statusColor = isRunning ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
@@ -709,6 +832,7 @@ for await (const chunk of stream) {
         <div class="section-title">⚡ Actions</div>
         <div class="actions">
             <button id="btn-toggle" class="secondary">${isRunning ? '⏹ Stop Server' : '▶ Start Server'}</button>
+            <button id="btn-edit-system-prompt" class="secondary">📝 System Prompt</button>
             <button id="btn-swagger" class="secondary">📝 Swagger API</button>
             <button id="btn-wiki" class="secondary">📚 Wiki</button>
             <button id="btn-docs" class="secondary">📚 How to Use</button>
@@ -727,14 +851,6 @@ for await (const chunk of stream) {
             <div class="stat-card">
                 <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 10px; opacity: 0.6;">ms</span></div>
                 <div class="stat-label">Latency</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="stat-total">${stats.totalRequests}</div>
-                <div class="stat-label">Total Reqs</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="stat-errors">${realtimeStats.errorRate}<span style="font-size: 10px; opacity: 0.6;">%</span></div>
-                <div class="stat-label">Errors</div>
             </div>
         </div>
 
@@ -814,6 +930,7 @@ print(response.choices[0].message.content)\`;
         document.getElementById('btn-copy-python').addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
         document.getElementById('btn-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' }));
+        document.getElementById('btn-edit-system-prompt').addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-wiki').addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
@@ -850,6 +967,23 @@ print(response.choices[0].message.content)\`;
             ? networkInfo.localIPs[0]
             : config.host;
         const url = `${protocol}://${displayHost}:${config.port}`;
+        const activeConnections = gateway.getServerStatus().activeConnections;
+
+        // Calculate Savings
+        const auditService = gateway.getAuditService();
+        const lifetimeStats = await auditService.getLifetimeStats();
+        const todayStats = await auditService.getTodayStats();
+
+        // GPT-4o Pricing (approximate)
+        const PRICE_IN = 2.50 / 1000000;
+        const PRICE_OUT = 10.00 / 1000000;
+
+        const savedTotal = (lifetimeStats.totalTokensIn * PRICE_IN) + (lifetimeStats.totalTokensOut * PRICE_OUT);
+        const savedToday = (todayStats.tokensIn * PRICE_IN) + (todayStats.tokensOut * PRICE_OUT);
+
+        const formatMoney = (amount: number) => {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+        };
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -917,9 +1051,23 @@ print(response.choices[0].message.content)\`;
             transform: translateY(-1px);
         }
         .card.full-width { grid-column: 1 / -1; }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .stat-sub {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 4px;
+        }
+        .money-saved {
+            color: var(--vscode-testing-iconPassed); /* Green-ish usually */
+        }
         
         /* Grid */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
         .info-grid { display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 13px; align-items: center; }
         .label { color: var(--vscode-descriptionForeground); font-weight: 500; }
         .value { color: var(--vscode-foreground); font-family: var(--vscode-editor-font-family); }
@@ -950,25 +1098,31 @@ print(response.choices[0].message.content)\`;
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
         }
-        button.secondary:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
-        
-        button.success { background-color: var(--vscode-testing-iconPassed); color: var(--vscode-editor-background); } /* Ensure contrast on success */
-        button.danger { background-color: var(--vscode-testing-iconFailed); color: var(--vscode-editor-background); }
-
-        /* Forms */
-        input, select, textarea {
-            width: 100%; padding: 8px 12px;
-            font-size: 13px; font-family: inherit;
-            border-radius: 6px;
-            border: 1px solid var(--vscode-input-border);
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.15s ease;
+        button.secondary:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground);
         }
-        input:focus, select:focus, textarea:focus {
+
+        .section-title {
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+        }
+        .section-title::after {
+            content: ''; flex: 1; height: 1px; background-color: var(--vscode-widget-border); opacity: 0.5;
+        }
+
+        /* Inputs */
+        input[type="text"], input[type="number"], select {
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-widget-border);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: inherit; font-size: 13px;
+        }
+        input:focus, select:focus {
             border-color: var(--vscode-focusBorder);
+            outline: 1px solid var(--vscode-focusBorder);
         }
         
         .switch { position: relative; width: 40px; height: 22px; }
@@ -1234,6 +1388,31 @@ print(response.choices[0].message.content)\`;
             </div>
         </div>
 
+        <!-- Stats Grid -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">💸 Est. Savings</h3>
+                <div style="font-size: 28px; font-weight: 600; color: var(--vscode-testing-iconPassed);">${formatMoney(savedTotal)}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">+${formatMoney(savedToday)} today</div>
+                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4o pricing</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">📊 Traffic</h3>
+                <div style="font-size: 28px; font-weight: 600;">${lifetimeStats.totalRequests || 0}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Total Requests</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">⚡ Latency</h3>
+                <div style="font-size: 28px; font-weight: 600;">${todayStats.avgLatency || 0}<span style="font-size: 14px; opacity: 0.6;">ms</span></div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Avg Today</div>
+            </div>
+            <div class="card">
+                <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">👥 Connections</h3>
+                <div style="font-size: 28px; font-weight: 600;">${activeConnections}</div>
+                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Active Clients</div>
+            </div>
+        </div>
+
         <!-- Copilot Health Banner -->
         ${!status.copilot.ready ? `
         <div style="background: var(--vscode-statusBarItem-warningBackground); color: var(--vscode-statusBarItem-warningForeground); padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; font-weight: 500; border: 1px solid rgba(0,0,0,0.1);">
@@ -1262,36 +1441,7 @@ print(response.choices[0].message.content)\`;
                 </div>
             </div>
 
-            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Requests</div>
-                    <div class="value" style="font-size: 20px;" id="stat-requests">${status.stats?.totalRequests ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Req/Min</div>
-                    <div class="value" style="font-size: 20px;" id="stat-rpm">0</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Latency</div>
-                    <div class="value" style="font-size: 20px;" id="stat-latency">0ms</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Error Rate</div>
-                    <div class="value" style="font-size: 20px;" id="stat-errors">0%</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Tokens In</div>
-                    <div class="value" style="font-size: 20px;" id="stat-tokens-in">${status.stats?.totalTokensIn ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Tokens Out</div>
-                    <div class="value" style="font-size: 20px;" id="stat-tokens-out">${status.stats?.totalTokensOut ?? 0}</div>
-                </div>
-                <div class="card" style="padding: 16px;">
-                    <div class="label">Uptime</div>
-                    <div class="value" style="font-size: 20px;" id="stat-uptime">0m</div>
-                </div>
-            </div>
+
 
             <div class="info-grid">
                 <div class="label">Connection</div>
@@ -1610,6 +1760,16 @@ print(response.choices[0].message.content)\`;
         </div>
 
         <div class="card full-width">
+            <h3>🧠 System Prompt</h3>
+            <p class="muted" style="margin-bottom: 12px;">
+                Define a default system persona/instruction for all API requests that don't provide one.
+            </p>
+            <div class="actions">
+                <button class="secondary" id="btn-edit-system-prompt" style="width: auto; padding: 8px 16px; font-weight: 600;">📝 Edit Default System Prompt</button>
+            </div>
+        </div>
+
+        <div class="card full-width">
             <h3>\ud83d\udcda API Documentation</h3>
             <p class="muted" style="margin-bottom: 16px;">
                 The gateway supports multiple API formats. Use the endpoints below with your favorite SDKs.
@@ -1638,8 +1798,8 @@ print(response.choices[0].message.content)\`;
             </div>
 
             <div class="actions" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 16px;">
-                <a href="http://${config.host}:${config.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcdd Swagger UI</a>
-                <a href="http://${config.host}:${config.port}/openapi.json" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">\ud83d\udcc4 OpenAPI JSON</a>
+                <a href="http://${config.host}:${config.port}/docs" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">📑 Swagger UI</a>
+                <a href="http://${config.host}:${config.port}/openapi.json" target="_blank" class="secondary" style="display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 10px 12px; background-color: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid color-mix(in srgb, var(--vscode-button-secondaryBackground) 50%, transparent); border-radius: 6px; text-decoration: none; font-weight: 600;">📄 OpenAPI JSON</a>
             </div>
         </div>
 
@@ -1721,6 +1881,13 @@ print(response.choices[0].message.content)\`;
         if (btnDocs) {
             btnDocs.onclick = function() {
                 vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' });
+            };
+        }
+
+        const btnEditSystemPrompt = document.getElementById('btn-edit-system-prompt');
+        if (btnEditSystemPrompt) {
+            btnEditSystemPrompt.onclick = function() {
+                vscode.postMessage({ type: 'editSystemPrompt' });
             };
         }
 
@@ -2419,48 +2586,7 @@ vscode.postMessage({ type: 'getAuditLogs', value: { page: 1, pageSize: 10 } });
     </html>`;
     }
 
-    public async resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken,
-    ) {
-        this._view = webviewView;
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this._extensionUri]
-        };
 
-        webviewView.webview.html = await this._getSidebarHtml(webviewView.webview);
-
-        webviewView.webview.onDidReceiveMessage(async data => {
-            switch (data.type) {
-                case 'openDashboard':
-                    await CopilotPanel.createOrShow(this._extensionUri, this._gateway);
-                    break;
-                case 'startServer':
-                    void this._gateway.startServer();
-                    break;
-                case 'stopServer':
-                    void this._gateway.stopServer();
-                    break;
-                case 'openSwagger': {
-                    const status = await this._gateway.getStatus();
-                    const swaggerUrl = `http://${status.config.host}:${status.config.port}/docs`;
-                    vscode.env.openExternal(vscode.Uri.parse(swaggerUrl));
-                    break;
-                }
-                case 'openWiki':
-                    // Open wiki as separate panel
-                    await CopilotPanel.openWiki(this._extensionUri, this._gateway);
-                    break;
-                case 'openUrl':
-                    if (typeof data.value === 'string') {
-                        void vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(data.value));
-                    }
-                    break;
-            }
-        });
-    }
 }
 
 function getNonce() {

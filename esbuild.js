@@ -41,7 +41,7 @@ async function main() {
 		treeShaking: true,
 		metafile: true,
 		// Remove console.log in production for smaller bundle
-		pure: production ? ['console.log'] : [],
+		drop: production ? ['console', 'debugger'] : [],
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,

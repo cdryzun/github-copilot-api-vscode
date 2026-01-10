@@ -246,6 +246,27 @@ export class AuditService {
         return result;
     }
 
+    public async getTodayStats(): Promise<DailyStats> {
+        const stats = await this.getDailyStats(1);
+        if (stats.length > 0) {
+            // Check if the returned stat is actually for today
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (stats[stats.length - 1].date === todayStr) {
+                return stats[stats.length - 1];
+            }
+        }
+        return {
+            date: new Date().toISOString().split('T')[0],
+            totalRequests: 0,
+            avgLatency: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            totalTokens: 0,
+            errorCount: 0,
+            uniqueIps: 0
+        };
+    }
+
     public async getLogEntries(page: number = 1, pageSize: number = 10): Promise<{ total: number, entries: AuditEntry[] }> {
         // Rewrite: Robust recent activity scan
         try {
