@@ -95,14 +95,15 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
             // If just stats changed, send data update message instead of re-rendering HTML
             if (this._lastRunningState === status.running) {
                 // State is stable, just update stats/UI via message
+                const activeConnections = gateway.getServerStatus().activeConnections;
                 if (this._view) {
                     this._view.webview.postMessage({ type: 'statsData', data: status.stats });
-                    // Also send realtime stats
-                    this._view.webview.postMessage({ type: 'realtimeStats', data: status.realtimeStats });
+                    // Also send realtime stats with activeConnections
+                    this._view.webview.postMessage({ type: 'realtimeStats', data: { ...status.realtimeStats, activeConnections } });
                 }
                 if (CopilotPanel.currentPanel) {
                     CopilotPanel.currentPanel.webview.postMessage({ type: 'statsData', data: status.stats });
-                    CopilotPanel.currentPanel.webview.postMessage({ type: 'realtimeStats', data: status.realtimeStats });
+                    CopilotPanel.currentPanel.webview.postMessage({ type: 'realtimeStats', data: { ...status.realtimeStats, activeConnections } });
                 }
                 return;
             }
@@ -170,6 +171,15 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
 
         CopilotPanel.currentPanel = panel;
 
+        // Set up message listener BEFORE setting HTML to prevent race condition
+        panel.webview.onDidReceiveMessage(
+            data => {
+                CopilotPanel.handleMessage(data, gateway);
+            },
+            undefined,
+            CopilotPanel.panelDisposables
+        );
+
         panel.webview.html = await CopilotPanel.getPanelHtml(panel.webview, gateway);
 
         // If scroll target provided, send message after a short delay to ensure DOM is ready
@@ -178,14 +188,6 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 panel.webview.postMessage({ type: 'scrollTo', target: scrollTarget });
             }, 300);
         }
-
-        panel.webview.onDidReceiveMessage(
-            data => {
-                CopilotPanel.handleMessage(data, gateway);
-            },
-            undefined,
-            CopilotPanel.panelDisposables
-        );
 
         panel.onDidDispose(() => {
             CopilotPanel.currentPanel = undefined;
@@ -667,9 +669,16 @@ for await (const chunk of stream) {
             case 'getStats':
                 // Send stats back to webview
                 if (CopilotPanel.currentPanel) {
+                    const stats = gateway.getStats();
+                    const activeConnections = gateway.getServerStatus().activeConnections;
                     void CopilotPanel.currentPanel.webview.postMessage({
                         type: 'statsData',
-                        data: gateway.getStats()
+                        data: stats
+                    });
+                    // Also send realtime stats with activeConnections for connections card
+                    void CopilotPanel.currentPanel.webview.postMessage({
+                        type: 'realtimeStats',
+                        data: { requestsPerMinute: stats.requestsPerMinute, avgLatencyMs: stats.avgLatencyMs, errorRate: stats.errorRate, activeConnections }
                     });
                 }
                 break;
@@ -837,6 +846,7 @@ for await (const chunk of stream) {
             <button id="btn-wiki" class="secondary">📚 Wiki</button>
             <button id="btn-docs" class="secondary">📚 How to Use</button>
             <button id="btn-dashboard" class="primary">Open Dashboard ↗</button>
+            <button id="btn-notes" class="secondary">📖 Things you should read</button>
         </div>
     </div>
 
@@ -867,11 +877,11 @@ for await (const chunk of stream) {
         <div class="section-title">🎫 Token Usage</div>
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value" style="font-size: 14px; color: var(--vscode-charts-green);">${this.formatNumber(stats.totalTokensIn)}</div>
+                <div class="stat-value" id="stat-tokens-in" style="font-size: 14px; color: var(--vscode-charts-green);">${this.formatNumber(stats.totalTokensIn)}</div>
                 <div class="stat-label">Tokens In</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" style="font-size: 14px; color: var(--vscode-charts-orange);">${this.formatNumber(stats.totalTokensOut)}</div>
+                <div class="stat-value" id="stat-tokens-out" style="font-size: 14px; color: var(--vscode-charts-orange);">${this.formatNumber(stats.totalTokensOut)}</div>
                 <div class="stat-label">Tokens Out</div>
         </div>
     </div>
@@ -938,6 +948,35 @@ print(response.choices[0].message.content)\`;
         if (btnDocs) {
             btnDocs.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' }));
         }
+        const btnNotes = document.getElementById('btn-notes');
+        if (btnNotes) {
+            btnNotes.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in' }));
+        }
+
+        // Listen for real-time stats updates from extension
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'realtimeStats' && message.data) {
+                const stats = message.data;
+                const rpmEl = document.getElementById('stat-rpm');
+                const latencyEl = document.getElementById('stat-latency');
+                if (rpmEl) rpmEl.textContent = stats.requestsPerMinute;
+                if (latencyEl) latencyEl.innerHTML = stats.avgLatencyMs + '<span style="font-size: 10px; opacity: 0.6;">ms</span>';
+            }
+            if (message.type === 'statsData' && message.data) {
+                const stats = message.data;
+                const tokensInEl = document.getElementById('stat-tokens-in');
+                const tokensOutEl = document.getElementById('stat-tokens-out');
+                if (tokensInEl) tokensInEl.textContent = formatNumber(stats.totalTokensIn);
+                if (tokensOutEl) tokensOutEl.textContent = formatNumber(stats.totalTokensOut);
+            }
+        });
     </script>
 </body>
 </html>`;
@@ -1408,7 +1447,7 @@ print(response.choices[0].message.content)\`;
             </div>
             <div class="card">
                 <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">👥 Connections</h3>
-                <div style="font-size: 28px; font-weight: 600;">${activeConnections}</div>
+                <div id="stat-connections" style="font-size: 28px; font-weight: 600;">${activeConnections}</div>
                 <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">Active Clients</div>
             </div>
         </div>
@@ -1502,17 +1541,17 @@ print(response.choices[0].message.content)\`;
                     </div>
 
                     <div style="margin-top: 16px;">
-                        <div style="display: flex; gap: 16px; margin-bottom: 12px;">
-                            <div style="flex: 1;">
+                        <div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; align-items: flex-end;">
+                            <div style="flex: 1; min-width: 120px;">
                                 <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">HOST</span>
-                                <input type="text" id="custom-host" value="${config.host}" placeholder="127.0.0.1" style="width: 100% !important;">
+                                <input type="text" id="custom-host" value="${config.host}" placeholder="127.0.0.1" style="width: 100%; box-sizing: border-box;">
                             </div>
-                            <div style="width: 100px;">
+                            <div style="width: 80px; flex-shrink: 0;">
                                 <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">PORT</span>
-                                <input type="number" id="custom-port" value="${config.port}" style="width: 100% !important;">
+                                <input type="number" id="custom-port" value="${config.port}" style="width: 100%; box-sizing: border-box;">
                             </div>
-                            <div style="display: flex; align-items: flex-end;">
-                                <button class="secondary" id="btn-set-host" style="height: 36px; padding: 0 16px;">Apply</button>
+                            <div style="flex-shrink: 0;">
+                                <button class="secondary" id="btn-set-host" style="height: 32px; padding: 0 16px; white-space: nowrap;">Apply</button>
                             </div>
                         </div>
                         <div style="display: flex; gap: 12px;">
@@ -2117,6 +2156,13 @@ print(response.choices[0].message.content)\`;
 
         startCountdown();
 
+        // Request fresh stats after a short delay to ensure extension message listener is ready
+        setTimeout(function() {
+            vscode.postMessage({ type: 'getStats' });
+            vscode.postMessage({ type: 'getAuditStats' });
+            vscode.postMessage({ type: 'getAuditLogs', value: { page: currentPage, pageSize: pageSize } });
+        }, 100);
+
         // IP Allowlist handlers
         document.getElementById('btn-add-ip').onclick = function() {
             var ip = document.getElementById('ip-allowlist-input').value.trim();
@@ -2268,6 +2314,10 @@ print(response.choices[0].message.content)\`;
                 if (message.data.requestsPerMinute !== undefined) document.getElementById('stat-rpm').textContent = message.data.requestsPerMinute;
                 if (message.data.avgLatencyMs !== undefined) document.getElementById('stat-latency').innerHTML = message.data.avgLatencyMs + '<span style="font-size: 10px; opacity: 0.6;">ms</span>';
                 if (message.data.errorRate !== undefined) document.getElementById('stat-errors').innerHTML = message.data.errorRate + '<span style="font-size: 10px; opacity: 0.6;">%</span>';
+                if (message.data.activeConnections !== undefined) {
+                    var connEl = document.getElementById('stat-connections');
+                    if (connEl) connEl.textContent = message.data.activeConnections;
+                }
             } else if (message.type === 'auditStatsData') {
                 updateCharts(message.data);
             } else if (message.type === 'auditLogData') {

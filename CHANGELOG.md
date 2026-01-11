@@ -4,6 +4,16 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.1.5] - 2026-01-11
+
+### Fixed
+- **Real-time metrics:** Sidebar and dashboard now update metrics (Req/Min, Latency, Tokens, Connections) in real-time
+- **Dashboard race condition:** Fixed message listener timing issue that caused stale data on initial load
+- **Host/Port layout:** Fixed overlap between host, port inputs and Apply button
+
+### Added
+- "Things you should read" button in sidebar linking to notes.suhaib.in
+
 ## [2.1.4] - 2026-01-10
 
 ### Fixed
