@@ -88,7 +88,12 @@ If it speaks OpenAI, it works with this gateway.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | Chat completions (streaming supported) |
+| `/v1/completions` | POST | Legacy completions API (streaming supported) |
+| `/v1/responses` | POST | OpenAI Responses API (2026 spec, streaming supported) |
 | `/v1/models` | GET | List all available models |
+| `/v1/tools` | GET | List available tools (VS Code + MCP) |
+| `/v1/tools/call` | POST | Execute a tool directly |
+| `/v1/mcp/servers` | GET | List connected MCP servers |
 | `/v1/messages` | POST | Anthropic Claude-compatible endpoint |
 | `/v1beta/models/:model:generateContent` | POST | Google Gemini-compatible endpoint |
 | `/health` | GET | Server health check |

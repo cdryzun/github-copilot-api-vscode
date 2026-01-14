@@ -174,6 +174,42 @@ export interface LlamaMessageResponse {
 	};
 }
 
+// --- OpenAI Responses API Interface (2026 spec) ---
+export interface ResponsesApiRequest {
+	model?: string;
+	input: string | Array<{ role?: string; content: string | any[]; type?: string }>;
+	instructions?: string;  // System prompt
+	tools?: Array<{ type: string; function?: { name: string; description?: string; parameters?: any } }>;
+	tool_choice?: string | { type: string; function?: { name: string } };
+	temperature?: number;
+	top_p?: number;
+	max_output_tokens?: number;
+	stream?: boolean;
+	metadata?: Record<string, string>;
+	previous_response_id?: string;
+	store?: boolean;
+	reasoning?: { effort?: 'low' | 'medium' | 'high' };
+}
+
+export interface ResponsesApiResponse {
+	id: string;
+	object: 'response';
+	created_at: number;
+	model: string;
+	status: 'completed' | 'failed' | 'in_progress' | 'cancelled';
+	output: Array<{
+		type: 'message';
+		id: string;
+		role: 'assistant';
+		content: Array<{ type: 'output_text'; text: string }>;
+	}>;
+	usage: {
+		input_tokens: number;
+		output_tokens: number;
+		total_tokens: number;
+	};
+}
+
 type ChatEndpointContext = {
 	source: 'http' | 'websocket'
 	endpoint: '/v1/chat/completions' | '/v1/completions' | '/llama/v1/chat/completions' | '/v1/realtime' | '/anthropic/v1/realtime' | '/google/v1/realtime' | '/llama/v1/realtime'
@@ -1290,6 +1326,91 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
+		// List all available tools (MCP + VS Code built-in)
+		if (req.method === 'GET' && url.pathname === '/v1/tools') {
+			const mcpService = await this.ensureMcpService();
+			const tools = mcpService ? await mcpService.getAllTools() : [];
+			this.sendJson(res, 200, {
+				object: 'list',
+				data: tools.map(t => ({
+					type: 'function',
+					server: t.serverName,
+					function: {
+						name: t.name,
+						description: t.description || '',
+						parameters: t.inputSchema || {}
+					}
+				}))
+			});
+			return;
+		}
+
+		// Call a specific tool
+		if (req.method === 'POST' && url.pathname === '/v1/tools/call') {
+			const body = await this.readJsonBody(req);
+			const { server, name, arguments: args } = body || {};
+			if (!server || !name) {
+				throw new ApiError(400, 'server and name are required', 'invalid_request_error', 'missing_params');
+			}
+			const mcpService = await this.ensureMcpService();
+			if (!mcpService) {
+				throw new ApiError(503, 'MCP service not available', 'service_unavailable', 'mcp_unavailable');
+			}
+			const result = await mcpService.callTool(server, name, args || {});
+			this.sendJson(res, 200, {
+				object: 'tool_result',
+				server,
+				name,
+				result
+			});
+			return;
+		}
+
+		// List connected MCP servers
+		if (req.method === 'GET' && url.pathname === '/v1/mcp/servers') {
+			const mcpService = await this.ensureMcpService();
+			const servers = mcpService ? mcpService.getConnectedServers() : [];
+			const tools = mcpService ? await mcpService.getAllTools() : [];
+
+			// Group tools by server
+			const serverDetails = servers.map(name => ({
+				name,
+				status: 'connected',
+				tools: tools.filter(t => t.serverName === name).map(t => t.name)
+			}));
+
+			// Add VS Code built-in tools
+			const vscodeTools = tools.filter(t => t.serverName === 'vscode');
+			if (vscodeTools.length > 0) {
+				serverDetails.push({
+					name: 'vscode',
+					status: 'built-in',
+					tools: vscodeTools.map(t => t.name)
+				});
+			}
+
+			this.sendJson(res, 200, {
+				object: 'list',
+				data: serverDetails
+			});
+			return;
+		}
+
+		// Refresh MCP servers (reconnect)
+		if (req.method === 'POST' && url.pathname === '/v1/mcp/servers/refresh') {
+			const mcpService = await this.ensureMcpService();
+			if (mcpService) {
+				await mcpService.refreshServers();
+			}
+			const servers = mcpService ? mcpService.getConnectedServers() : [];
+			this.sendJson(res, 200, {
+				object: 'refresh_result',
+				message: 'MCP servers refreshed',
+				connected: servers
+			});
+			return;
+		}
+
 		if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
 			const body = await this.readJsonBody(req);
 			if (body?.stream === true) {
@@ -1347,20 +1468,25 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		// Text completions
+		// Text completions (with streaming support)
 		if (req.method === 'POST' && url.pathname === '/v1/completions') {
 			const body = await this.readJsonBody(req);
-			const response = await this.processCompletion(body) as any;
-			this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
-				requestPayload: body,
-				responsePayload: response,
-				tokensIn: response?.usage?.prompt_tokens,
-				tokensOut: response?.usage?.completion_tokens,
-				model: body?.model,
-				requestHeaders: req.headers,
-				responseHeaders: res.getHeaders()
-			});
-			this.sendJson(res, 200, response);
+
+			if (body?.stream === true) {
+				await this.processStreamingCompletion(body, req, res, requestId, requestStart);
+			} else {
+				const response = await this.processCompletion(body) as any;
+				this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
+					requestPayload: body,
+					responsePayload: response,
+					tokensIn: response?.usage?.prompt_tokens,
+					tokensOut: response?.usage?.completion_tokens,
+					model: body?.model,
+					requestHeaders: req.headers,
+					responseHeaders: res.getHeaders()
+				});
+				this.sendJson(res, 200, response);
+			}
 			return;
 		}
 
@@ -1394,20 +1520,25 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		// Responses API (OpenAI)
+		// Responses API (OpenAI 2026 spec)
 		if (req.method === 'POST' && url.pathname === '/v1/responses') {
-			const body = await this.readJsonBody(req);
-			const response = await this.processResponsesApi(body);
-			this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
-				requestPayload: body,
-				responsePayload: response,
-				tokensIn: (response as any)?.usage?.input_tokens,
-				tokensOut: (response as any)?.usage?.output_tokens,
-				model: body?.model,
-				requestHeaders: req.headers,
-				responseHeaders: res.getHeaders()
-			});
-			this.sendJson(res, 200, response);
+			const body = await this.readJsonBody(req) as ResponsesApiRequest;
+
+			if (body?.stream === true) {
+				await this.processStreamingResponsesApi(body, req, res, requestId, requestStart);
+			} else {
+				const response = await this.processResponsesApi(body);
+				this.logRequest(requestId, req.method, url.pathname, 200, Date.now() - requestStart, {
+					requestPayload: body,
+					responsePayload: response,
+					tokensIn: response?.usage?.input_tokens,
+					tokensOut: response?.usage?.output_tokens,
+					model: body?.model,
+					requestHeaders: req.headers,
+					responseHeaders: res.getHeaders()
+				});
+				this.sendJson(res, 200, response);
+			}
 			return;
 		}
 
@@ -2028,33 +2159,49 @@ export class CopilotApiGateway implements vscode.Disposable {
 		};
 	}
 
-	private async processResponsesApi(payload: any): Promise<Record<string, unknown>> {
-		// OpenAI Responses API format - convert to chat completion
+	private async processResponsesApi(payload: ResponsesApiRequest): Promise<ResponsesApiResponse> {
+		// OpenAI Responses API format (2026 spec) - convert to chat completion
 		const input = payload?.input;
 		let messages: Array<{ role: string; content: any }> = [];
 
-		if (typeof input === 'string') {
-			messages = [{ role: 'user', content: input }];
-		} else if (Array.isArray(input)) {
-			messages = input.map((item: any) => {
-				if (typeof item === 'string') {
-					return { role: 'user', content: item };
-				}
-				return {
-					role: item.role || 'user',
-					content: typeof item.content === 'string' ? item.content : JSON.stringify(item.content)
-				};
-			});
+		// Handle 'instructions' as system message (new in 2026 spec)
+		if (payload.instructions) {
+			messages.push({ role: 'system', content: payload.instructions });
 		}
 
+		// Parse input
+		if (typeof input === 'string') {
+			messages.push({ role: 'user', content: input });
+		} else if (Array.isArray(input)) {
+			for (const item of input) {
+				if (typeof item === 'string') {
+					messages.push({ role: 'user', content: item });
+				} else if (item.type === 'message' || !item.type) {
+					// Handle message-type input items
+					messages.push({
+						role: item.role || 'user',
+						content: typeof item.content === 'string' ? item.content : JSON.stringify(item.content)
+					});
+				}
+				// Skip other types like 'item_reference' for now
+			}
+		}
 
+		// Inject default system prompt (if not already set via instructions)
+		if (!payload.instructions) {
+			messages = this.injectSystemPrompt(messages);
+		}
 
-		// Inject default system prompt
-		messages = this.injectSystemPrompt(messages);
-
-		let prompt = this.composePrompt(messages);
-		// Apply redaction to OUTBOUND prompt before sending to Copilot
-		prompt = this.redactPromptString(prompt);
+		// Build VS Code LM messages
+		const lmMessages: vscode.LanguageModelChatMessage[] = [];
+		for (const msg of messages) {
+			const content = this.redactPromptString(String(msg.content));
+			if (msg.role === 'system' || msg.role === 'user') {
+				lmMessages.push(vscode.LanguageModelChatMessage.User(content));
+			} else if (msg.role === 'assistant') {
+				lmMessages.push(vscode.LanguageModelChatMessage.Assistant(content));
+			}
+		}
 
 		const model = this.resolveModel(payload?.model);
 
@@ -2068,18 +2215,30 @@ export class CopilotApiGateway implements vscode.Disposable {
 			throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
 		}
 
-		const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt, selectedModel));
+		// Build model options (new in 2026 spec support)
+		const modelOptions: vscode.LanguageModelChatRequestOptions = {};
+		// Note: VS Code LM API doesn't expose temperature/top_p directly,
+		// but we prepare the structure for future compatibility
+
+		// Invoke Copilot
+		const text = await this.runWithConcurrency(async () => {
+			const response = await selectedModel.sendRequest(lmMessages, modelOptions, new vscode.CancellationTokenSource().token);
+			let result = '';
+			for await (const part of response.stream) {
+				if (part instanceof vscode.LanguageModelTextPart) {
+					result += part.value;
+				}
+			}
+			return result;
+		});
 
 		// Count tokens
 		let inputTokens = 0;
 		let outputTokens = 0;
 		try {
-			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-			if (copilotModels && copilotModels.length > 0) {
-				const lmModel = copilotModels[0];
-				inputTokens = await lmModel.countTokens(prompt);
-				outputTokens = await lmModel.countTokens(text || '');
-			}
+			const promptStr = messages.map(m => String(m.content)).join('\n');
+			inputTokens = await selectedModel.countTokens(promptStr);
+			outputTokens = await selectedModel.countTokens(text || '');
 		} catch (e) {
 			console.error('Token counting failed:', e);
 		}
@@ -2089,6 +2248,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			object: 'response',
 			created_at: Math.floor(Date.now() / 1000),
 			model,
+			status: 'completed',
 			output: [
 				{
 					type: 'message',
@@ -2097,17 +2257,202 @@ export class CopilotApiGateway implements vscode.Disposable {
 					content: [
 						{
 							type: 'output_text',
-							text
+							text: text || ''
 						}
 					]
 				}
 			],
 			usage: {
-				prompt_tokens: inputTokens,
-				completion_tokens: outputTokens,
+				input_tokens: inputTokens,
+				output_tokens: outputTokens,
 				total_tokens: inputTokens + outputTokens
 			}
 		};
+	}
+
+	private async processStreamingResponsesApi(payload: ResponsesApiRequest, req: IncomingMessage, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
+		// OpenAI Responses API streaming format (2026 spec)
+		const input = payload?.input;
+		let messages: Array<{ role: string; content: any }> = [];
+
+		// Handle 'instructions' as system message
+		if (payload.instructions) {
+			messages.push({ role: 'system', content: payload.instructions });
+		}
+
+		// Parse input
+		if (typeof input === 'string') {
+			messages.push({ role: 'user', content: input });
+		} else if (Array.isArray(input)) {
+			for (const item of input) {
+				if (typeof item === 'string') {
+					messages.push({ role: 'user', content: item });
+				} else if (item.type === 'message' || !item.type) {
+					messages.push({
+						role: item.role || 'user',
+						content: typeof item.content === 'string' ? item.content : JSON.stringify(item.content)
+					});
+				}
+			}
+		}
+
+		// Inject default system prompt if needed
+		if (!payload.instructions) {
+			messages = this.injectSystemPrompt(messages);
+		}
+
+		// Build VS Code LM messages
+		const lmMessages: vscode.LanguageModelChatMessage[] = [];
+		for (const msg of messages) {
+			const content = this.redactPromptString(String(msg.content));
+			if (msg.role === 'system' || msg.role === 'user') {
+				lmMessages.push(vscode.LanguageModelChatMessage.User(content));
+			} else if (msg.role === 'assistant') {
+				lmMessages.push(vscode.LanguageModelChatMessage.Assistant(content));
+			}
+		}
+
+		const model = this.resolveModel(payload?.model);
+		const responseId = `resp-${randomUUID()}`;
+		const messageId = `msg-${randomUUID()}`;
+
+		// Set SSE headers
+		res.writeHead(200, {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache',
+			'Connection': 'keep-alive',
+			'Access-Control-Allow-Origin': '*'
+		});
+
+		const cts = new vscode.CancellationTokenSource();
+		req.on('close', () => {
+			cts.cancel();
+			console.log(`[Responses] Client disconnected, cancelling request ${logRequestId || ''}`);
+		});
+
+		// Heartbeat to keep connection alive
+		const heartbeat = setInterval(() => {
+			if (!res.writableEnded) {
+				res.write(': ping\n\n');
+			}
+		}, 15000);
+
+		let totalContent = '';
+
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+
+			const selectedModel = this.findCopilotModel(model, copilotModels);
+			if (!selectedModel) {
+				throw new ApiError(404, `Model "${model}" not found.`, 'invalid_request_error', 'model_not_found');
+			}
+
+			const lmResponse = await selectedModel.sendRequest(lmMessages, {}, cts.token);
+
+			// Send response.created event
+			res.write(`event: response.created\ndata: ${JSON.stringify({
+				type: 'response.created',
+				response: {
+					id: responseId,
+					object: 'response',
+					created_at: Math.floor(Date.now() / 1000),
+					model,
+					status: 'in_progress',
+					output: []
+				}
+			})}\n\n`);
+
+			// Send content_part.added event
+			res.write(`event: response.content_part.added\ndata: ${JSON.stringify({
+				type: 'response.content_part.added',
+				item_id: messageId,
+				content_index: 0,
+				part: { type: 'output_text', text: '' }
+			})}\n\n`);
+
+			// Stream the content
+			for await (const part of lmResponse.stream) {
+				if (cts.token.isCancellationRequested) { break; }
+				if (part instanceof vscode.LanguageModelTextPart) {
+					totalContent += part.value;
+					res.write(`event: response.output_text.delta\ndata: ${JSON.stringify({
+						type: 'response.output_text.delta',
+						item_id: messageId,
+						content_index: 0,
+						delta: part.value
+					})}\n\n`);
+				}
+			}
+
+			if (!cts.token.isCancellationRequested) {
+				// Send content_part.done event
+				res.write(`event: response.content_part.done\ndata: ${JSON.stringify({
+					type: 'response.content_part.done',
+					item_id: messageId,
+					content_index: 0,
+					part: { type: 'output_text', text: totalContent }
+				})}\n\n`);
+
+				// Send response.completed event
+				let inputTokens = 0;
+				let outputTokens = 0;
+				try {
+					const promptStr = messages.map(m => String(m.content)).join('\n');
+					inputTokens = await selectedModel.countTokens(promptStr);
+					outputTokens = await selectedModel.countTokens(totalContent);
+				} catch (e) { }
+
+				res.write(`event: response.completed\ndata: ${JSON.stringify({
+					type: 'response.completed',
+					response: {
+						id: responseId,
+						object: 'response',
+						created_at: Math.floor(Date.now() / 1000),
+						model,
+						status: 'completed',
+						output: [{
+							type: 'message',
+							id: messageId,
+							role: 'assistant',
+							content: [{ type: 'output_text', text: totalContent }]
+						}],
+						usage: {
+							input_tokens: inputTokens,
+							output_tokens: outputTokens,
+							total_tokens: inputTokens + outputTokens
+						}
+					}
+				})}\n\n`);
+
+				res.end();
+
+				if (logRequestId) {
+					this.logRequest(logRequestId, 'POST', '/v1/responses', 200, Date.now() - (logRequestStart || 0), {
+						requestPayload: payload,
+						responsePayload: { id: responseId, content: totalContent },
+						tokensIn: inputTokens,
+						tokensOut: outputTokens,
+						model
+					});
+				}
+			}
+
+		} catch (error: any) {
+			if (cts.token.isCancellationRequested) { return; }
+			console.error('Responses API streaming error:', error);
+			const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'api_error');
+			res.write(`event: error\ndata: ${JSON.stringify({
+				type: 'error',
+				error: { type: apiError.type, message: apiError.message, code: apiError.code }
+			})}\n\n`);
+			res.end();
+		} finally {
+			clearInterval(heartbeat);
+			cts.dispose();
+		}
 	}
 
 	private async processAnthropicMessages(payload: AnthropicMessageRequest): Promise<AnthropicMessageResponse> {
@@ -2683,6 +3028,116 @@ export class CopilotApiGateway implements vscode.Disposable {
 		};
 	}
 
+	private async processStreamingCompletion(payload: any, req: IncomingMessage, res: ServerResponse, logRequestId?: string, logRequestStart?: number): Promise<void> {
+		let prompt = this.normalizePromptInput(payload?.prompt);
+		if (!prompt) {
+			throw new ApiError(400, 'prompt is required', 'invalid_request_error', 'missing_prompt');
+		}
+
+		// Apply redaction
+		prompt = this.redactPromptString(prompt);
+		const model = this.resolveModel(payload?.model);
+		const completionId = `cmpl-${randomUUID()}`;
+		const created = Math.floor(Date.now() / 1000);
+
+		// Set SSE headers
+		res.writeHead(200, {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache',
+			'Connection': 'keep-alive',
+			'Access-Control-Allow-Origin': '*'
+		});
+
+		const cts = new vscode.CancellationTokenSource();
+		req.on('close', () => {
+			cts.cancel();
+			console.log(`[Completions] Client disconnected, cancelling request ${logRequestId || ''}`);
+		});
+
+		let totalContent = '';
+
+		try {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			if (!copilotModels || copilotModels.length === 0) {
+				throw new ApiError(503, 'No Copilot language model available.', 'service_unavailable', 'copilot_unavailable');
+			}
+
+			const selectedModel = this.findCopilotModel(model, copilotModels);
+			if (!selectedModel) {
+				throw new ApiError(404, `Model "${model}" not found.`, 'invalid_request_error', 'model_not_found');
+			}
+
+			const lmMessages = [vscode.LanguageModelChatMessage.User(prompt)];
+			const lmResponse = await selectedModel.sendRequest(lmMessages, {}, cts.token);
+
+			for await (const part of lmResponse.stream) {
+				if (cts.token.isCancellationRequested) { break; }
+				if (part instanceof vscode.LanguageModelTextPart) {
+					totalContent += part.value;
+					const chunk = {
+						id: completionId,
+						object: 'text_completion',
+						created,
+						model,
+						choices: [{
+							index: 0,
+							text: part.value,
+							finish_reason: null,
+							logprobs: null
+						}]
+					};
+					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+				}
+			}
+
+			if (!cts.token.isCancellationRequested) {
+				// Send final chunk with finish_reason
+				const finalChunk = {
+					id: completionId,
+					object: 'text_completion',
+					created,
+					model,
+					choices: [{
+						index: 0,
+						text: '',
+						finish_reason: 'stop',
+						logprobs: null
+					}]
+				};
+				res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+				res.write('data: [DONE]\n\n');
+				res.end();
+
+				// Log request
+				if (logRequestId) {
+					let promptTokens = 0;
+					let completionTokens = 0;
+					try {
+						promptTokens = await selectedModel.countTokens(prompt);
+						completionTokens = await selectedModel.countTokens(totalContent);
+					} catch (e) { }
+
+					this.logRequest(logRequestId, 'POST', '/v1/completions', 200, Date.now() - (logRequestStart || 0), {
+						requestPayload: payload,
+						responsePayload: { id: completionId, text: totalContent },
+						tokensIn: promptTokens,
+						tokensOut: completionTokens,
+						model
+					});
+				}
+			}
+
+		} catch (error: any) {
+			if (cts.token.isCancellationRequested) { return; }
+			console.error('Completions streaming error:', error);
+			const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'api_error');
+			res.write(`data: ${JSON.stringify({ error: { message: apiError.message, type: apiError.type, code: apiError.code } })}\n\n`);
+			res.end();
+		} finally {
+			cts.dispose();
+		}
+	}
+
 	private async handleWebSocketMessage(socket: WebSocket, raw: RawData, endpoint: string): Promise<void> {
 		const text = typeof raw === 'string' ? raw : raw.toString('utf8');
 		let payload: any;
@@ -3125,6 +3580,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 				{ name: 'Llama', description: 'Meta Llama API compatible endpoints' },
 				{ name: 'Models', description: 'Model information' },
 				{ name: 'Utilities', description: 'Utility endpoints' },
+				{ name: 'Tools', description: 'MCP and VS Code tool endpoints' },
 				{ name: 'WebSocket', description: 'Real-time WebSocket endpoints for all providers' }
 			],
 
@@ -3202,17 +3658,30 @@ export class CopilotApiGateway implements vscode.Disposable {
 					post: {
 						tags: ['Completions'],
 						summary: 'Create text completion',
-						description: 'Creates a text completion for the given prompt.',
+						description: 'Creates a text completion for the given prompt.\n\n**Features:**\n- **Streaming:** Server-Sent Events with `stream: true`\n- **Token usage:** Detailed usage statistics',
 						operationId: 'createCompletion',
 						requestBody: {
 							required: true,
 							content: {
 								'application/json': {
 									schema: { $ref: '#/components/schemas/CompletionRequest' },
-									example: {
-										model: this.config.defaultModel,
-										prompt: 'Once upon a time',
-										max_tokens: 100
+									examples: {
+										basic: {
+											summary: 'Basic completion',
+											value: {
+												model: this.config.defaultModel,
+												prompt: 'Once upon a time',
+												max_tokens: 100
+											}
+										},
+										streaming: {
+											summary: 'Streaming response',
+											value: {
+												model: this.config.defaultModel,
+												prompt: 'Write a story about',
+												stream: true
+											}
+										}
 									}
 								}
 							}
@@ -3220,7 +3689,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 						responses: {
 							'200': {
 								description: 'Successful response',
-								content: { 'application/json': { schema: { $ref: '#/components/schemas/CompletionResponse' } } }
+								content: {
+									'application/json': { schema: { $ref: '#/components/schemas/CompletionResponse' } },
+									'text/event-stream': { description: 'SSE stream when stream=true' }
+								}
 							},
 							'400': { description: 'Bad request' },
 							'401': { description: 'Unauthorized' }
@@ -3231,17 +3703,38 @@ export class CopilotApiGateway implements vscode.Disposable {
 				'/v1/responses': {
 					post: {
 						tags: ['Chat'],
-						summary: 'Create response (simplified API)',
-						description: 'Simplified OpenAI Responses API format for easier integration.',
+						summary: 'Create response (OpenAI 2026 Responses API)',
+						description: 'OpenAI Responses API for creating model responses. Supports streaming via SSE.\n\n**Features:**\n- **Streaming:** Server-Sent Events with `stream: true`\n- **Instructions:** System prompt via `instructions` field\n- **Multi-turn:** Array-based `input` for conversations\n- **Codex CLI compatible**',
 						operationId: 'createResponse',
 						requestBody: {
 							required: true,
 							content: {
 								'application/json': {
 									schema: { $ref: '#/components/schemas/ResponsesRequest' },
-									example: {
-										model: this.config.defaultModel,
-										input: 'What is 2+2?'
+									examples: {
+										basic: {
+											summary: 'Simple text input',
+											value: {
+												model: this.config.defaultModel,
+												input: 'What is 2+2?'
+											}
+										},
+										withInstructions: {
+											summary: 'With system instructions',
+											value: {
+												model: this.config.defaultModel,
+												input: 'Write a haiku about coding',
+												instructions: 'You are a creative poet. Be concise and artistic.'
+											}
+										},
+										streaming: {
+											summary: 'Streaming response',
+											value: {
+												model: this.config.defaultModel,
+												input: 'Tell me a story',
+												stream: true
+											}
+										}
 									}
 								}
 							}
@@ -3249,7 +3742,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 						responses: {
 							'200': {
 								description: 'Successful response',
-								content: { 'application/json': { schema: { $ref: '#/components/schemas/ResponsesResponse' } } }
+								content: {
+									'application/json': { schema: { $ref: '#/components/schemas/ResponsesResponse' } },
+									'text/event-stream': { description: 'SSE stream when stream=true' }
+								}
 							}
 						},
 						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
@@ -3327,6 +3823,81 @@ export class CopilotApiGateway implements vscode.Disposable {
 							'200': {
 								description: 'Usage statistics',
 								content: { 'application/json': { schema: { $ref: '#/components/schemas/UsageResponse' } } }
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1/tools': {
+					get: {
+						tags: ['Tools'],
+						summary: 'List available tools',
+						description: 'Lists all available tools from connected MCP servers and VS Code built-in tools.',
+						operationId: 'listTools',
+						responses: {
+							'200': {
+								description: 'List of tools',
+								content: { 'application/json': { schema: { $ref: '#/components/schemas/ToolList' } } }
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1/tools/call': {
+					post: {
+						tags: ['Tools'],
+						summary: 'Call a tool',
+						description: 'Invokes a specific tool from an MCP server or VS Code built-in tools.',
+						operationId: 'callTool',
+						requestBody: {
+							required: true,
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/ToolCallRequest' },
+									example: {
+										server: 'vscode',
+										name: 'readFile',
+										arguments: { path: '/path/to/file.txt' }
+									}
+								}
+							}
+						},
+						responses: {
+							'200': {
+								description: 'Tool result',
+								content: { 'application/json': { schema: { $ref: '#/components/schemas/ToolCallResponse' } } }
+							},
+							'400': { description: 'Bad request' },
+							'503': { description: 'MCP service unavailable' }
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1/mcp/servers': {
+					get: {
+						tags: ['Tools'],
+						summary: 'List MCP servers',
+						description: 'Lists all connected MCP servers and their available tools.',
+						operationId: 'listMcpServers',
+						responses: {
+							'200': {
+								description: 'List of MCP servers',
+								content: { 'application/json': { schema: { $ref: '#/components/schemas/McpServerList' } } }
+							}
+						},
+						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
+					}
+				},
+				'/v1/mcp/servers/refresh': {
+					post: {
+						tags: ['Tools'],
+						summary: 'Refresh MCP connections',
+						description: 'Reconnects to all configured MCP servers.',
+						operationId: 'refreshMcpServers',
+						responses: {
+							'200': {
+								description: 'Refresh result',
+								content: { 'application/json': { schema: { $ref: '#/components/schemas/McpRefreshResponse' } } }
 							}
 						},
 						security: this.config.apiKey ? [{ bearerAuth: [] }] : []
@@ -3658,29 +4229,54 @@ export class CopilotApiGateway implements vscode.Disposable {
 						type: 'object',
 						required: ['input'],
 						properties: {
-							model: { type: 'string' },
-							input: { type: 'string', description: 'User input/question' },
-							instructions: { type: 'string', description: 'System instructions' }
+							model: { type: 'string', description: 'Model ID to use for generation' },
+							input: {
+								oneOf: [
+									{ type: 'string', description: 'Simple text input' },
+									{
+										type: 'array',
+										items: {
+											type: 'object',
+											properties: {
+												role: { type: 'string', enum: ['user', 'assistant', 'system'] },
+												content: { type: 'string' }
+											}
+										},
+										description: 'Array of message objects for multi-turn conversations'
+									}
+								]
+							},
+							instructions: { type: 'string', description: 'System prompt / instructions for the model' },
+							stream: { type: 'boolean', description: 'Enable SSE streaming', default: false },
+							temperature: { type: 'number', minimum: 0, maximum: 2, description: 'Sampling temperature' },
+							top_p: { type: 'number', minimum: 0, maximum: 1, description: 'Nucleus sampling parameter' },
+							max_output_tokens: { type: 'integer', description: 'Maximum tokens to generate' },
+							tools: { type: 'array', items: { type: 'object' }, description: 'Tool definitions for function calling' },
+							metadata: { type: 'object', description: 'Custom metadata key-value pairs' }
 						}
 					},
 					ResponsesResponse: {
 						type: 'object',
 						properties: {
-							id: { type: 'string' },
-							object: { type: 'string' },
-							created_at: { type: 'integer' },
+							id: { type: 'string', description: 'Unique response ID' },
+							object: { type: 'string', enum: ['response'] },
+							created_at: { type: 'integer', description: 'Unix timestamp' },
+							model: { type: 'string' },
+							status: { type: 'string', enum: ['completed', 'failed', 'in_progress', 'cancelled'] },
 							output: {
 								type: 'array',
 								items: {
 									type: 'object',
 									properties: {
-										type: { type: 'string' },
+										type: { type: 'string', enum: ['message'] },
+										id: { type: 'string' },
+										role: { type: 'string', enum: ['assistant'] },
 										content: {
 											type: 'array',
 											items: {
 												type: 'object',
 												properties: {
-													type: { type: 'string' },
+													type: { type: 'string', enum: ['output_text'] },
 													text: { type: 'string' }
 												}
 											}
@@ -3688,7 +4284,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 									}
 								}
 							},
-							usage: { $ref: '#/components/schemas/Usage' }
+							usage: {
+								type: 'object',
+								properties: {
+									input_tokens: { type: 'integer' },
+									output_tokens: { type: 'integer' },
+									total_tokens: { type: 'integer' }
+								}
+							}
 						}
 					},
 					TokenizeRequest: {
@@ -3704,6 +4307,73 @@ export class CopilotApiGateway implements vscode.Disposable {
 						properties: {
 							model: { type: 'string' },
 							token_count: { type: 'integer' }
+						}
+					},
+					ToolList: {
+						type: 'object',
+						properties: {
+							object: { type: 'string', example: 'list' },
+							data: {
+								type: 'array',
+								items: {
+									type: 'object',
+									properties: {
+										type: { type: 'string', example: 'function' },
+										server: { type: 'string', description: 'MCP server name or "vscode"' },
+										function: {
+											type: 'object',
+											properties: {
+												name: { type: 'string' },
+												description: { type: 'string' },
+												parameters: { type: 'object' }
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					ToolCallRequest: {
+						type: 'object',
+						required: ['server', 'name'],
+						properties: {
+							server: { type: 'string', description: 'MCP server name or "vscode"' },
+							name: { type: 'string', description: 'Tool name' },
+							arguments: { type: 'object', description: 'Tool arguments' }
+						}
+					},
+					ToolCallResponse: {
+						type: 'object',
+						properties: {
+							object: { type: 'string', example: 'tool_result' },
+							server: { type: 'string' },
+							name: { type: 'string' },
+							result: { type: 'object', description: 'Result from the tool execution' }
+						}
+					},
+					McpServerList: {
+						type: 'object',
+						properties: {
+							object: { type: 'string', example: 'list' },
+							data: {
+								type: 'array',
+								items: {
+									type: 'object',
+									properties: {
+										name: { type: 'string' },
+										status: { type: 'string' },
+										tools: { type: 'array', items: { type: 'string' } }
+									}
+								}
+							}
+						}
+					},
+					McpRefreshResponse: {
+						type: 'object',
+						properties: {
+							object: { type: 'string', example: 'refresh_result' },
+							message: { type: 'string' },
+							connected: { type: 'array', items: { type: 'string' } }
 						}
 					},
 					ModelList: {
