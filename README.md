@@ -101,6 +101,20 @@ llm:
 
 Now your WhatsApp/Telegram/Discord/Slack bots are powered by Copilot! 🚀
 
+### 🌐 Internet Access via Cloudflare Tunnels
+
+Access your Copilot API from anywhere — your phone, tablet, or share with friends:
+
+1. Enable authentication (set an API key in Security settings)
+2. Start the server
+3. Click **"Go Live"** in the Internet Access section
+4. Get a public `*.trycloudflare.com` URL instantly
+
+**Free, no Cloudflare account needed!** Perfect for:
+- Accessing from your phone outside your home network
+- Sharing with friends or teammates temporarily
+- Remote development without VPN setup
+
 ---
 
 ## 🔌 API Endpoints

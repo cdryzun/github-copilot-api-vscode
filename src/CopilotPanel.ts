@@ -572,6 +572,25 @@ for await (const chunk of stream) {
                     void gateway.toggleMcp(data.value);
                 }
                 break;
+            case 'startTunnel':
+                void gateway.startTunnel().then(async result => {
+                    if (!result.success) {
+                        void vscode.window.showErrorMessage(result.error || 'Failed to start tunnel');
+                    } else {
+                        void vscode.window.showInformationMessage(`Tunnel active at: ${result.url}`);
+                    }
+                    if (CopilotPanel.currentPanel) {
+                        CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                    }
+                });
+                break;
+            case 'stopTunnel':
+                void gateway.stopTunnel().then(async () => {
+                    if (CopilotPanel.currentPanel) {
+                        CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                    }
+                });
+                break;
             case 'addRedactionPattern':
                 if (data.value && typeof data.value === 'object') {
                     const { name, pattern } = data.value as { name: string; pattern: string };
@@ -1427,6 +1446,36 @@ print(response.choices[0].message.content)\`;
             </div>
         </div>
 
+        <!-- What's New Banner -->
+        <div class="card full-width" style="border-left: 3px solid var(--vscode-charts-blue);">
+            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px;">
+                <span style="background: var(--vscode-charts-blue); color: white; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; white-space: nowrap;">✨ NEW</span>
+                <div>
+                    <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px;">🌐 Internet Access via Cloudflare Tunnels</div>
+                    <div class="muted" style="font-size: 12px; line-height: 1.5;">
+                        Access your Copilot API from anywhere — your phone, tablet, another computer, or share with friends. 
+                        Enable authentication, click "Go Live" below, and get a public URL instantly. Free, no account needed!
+                    </div>
+                </div>
+            </div>
+            
+            <div style="font-size: 11px; font-weight: 600; margin-bottom: 10px; opacity: 0.8;">📖 Understanding Network Access Options</div>
+            <div style="display: grid; gap: 10px; font-size: 11px;">
+                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <span style="font-weight: 600; white-space: nowrap;">🔒 127.0.0.1</span>
+                    <span class="muted">(localhost only) — Only accessible from this computer. Safest option for local development.</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <span style="font-weight: 600; white-space: nowrap;">📡 0.0.0.0</span>
+                    <span class="muted">(local network) — Accessible from devices on your WiFi/LAN (e.g., phone on same network). Use when you need LAN access but not internet exposure.</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <span style="font-weight: 600; white-space: nowrap;">🌐 Cloudflare Tunnel</span>
+                    <span class="muted">(internet) — Accessible from anywhere via public URL. Use for phone access outside home, sharing with others, or remote access. Requires authentication. <em>URL changes each session.</em></span>
+                </div>
+            </div>
+        </div>
+
         <!-- Stats Grid -->
         <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
             <div class="card">
@@ -1656,6 +1705,58 @@ print(response.choices[0].message.content)\`;
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Internet Access (Cloudflare Tunnel) -->
+        <div class="card full-width">
+            <h3>🌐 Internet Access</h3>
+            <p class="muted" style="margin-bottom: 12px;">
+                Expose your API to the internet using Cloudflare Quick Tunnels. Free, secure, no account needed.
+            </p>
+            
+            <div style="background: var(--vscode-textBlockQuote-background); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.8;">⚠️ REQUIREMENTS FOR GOING LIVE</div>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;">
+                    <li style="color: ${status.running ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)'};">
+                        ${status.running ? '✓' : '✗'} Server must be <strong>running</strong>
+                    </li>
+                    <li style="color: ${config.apiKey ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)'};">
+                        ${config.apiKey ? '✓' : '✗'} Authentication (API Key) must be <strong>enabled</strong> for security
+                    </li>
+                </ul>
+            </div>
+
+            <div id="tunnel-status-area" style="margin-bottom: 16px;">
+                ${status.tunnel?.running ? `
+                    <div style="background: color-mix(in srgb, var(--vscode-testing-iconPassed) 15%, transparent); border: 1px solid var(--vscode-testing-iconPassed); border-radius: 8px; padding: 16px;">
+                        <div style="font-size: 11px; font-weight: 600; opacity: 0.8; margin-bottom: 8px;">🟢 TUNNEL ACTIVE</div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <code id="tunnel-url" style="font-size: 13px; word-break: break-all; flex: 1;">${status.tunnel.url}</code>
+                            <button id="btn-copy-tunnel-url" class="secondary" style="width: auto; padding: 6px 12px; font-size: 11px;">📋 Copy URL</button>
+                        </div>
+                        <div class="muted" style="font-size: 10px; margin-top: 8px;">
+                            Anyone with this URL and your API key can access the API. Tunnel URL changes each session.
+                        </div>
+                    </div>
+                ` : `
+                    <div style="background: var(--vscode-textBlockQuote-background); border: 1px solid var(--vscode-widget-border); border-radius: 8px; padding: 16px; text-align: center;">
+                        <div class="muted" style="font-size: 12px;">Tunnel not active. Click "Go Live" to expose your API to the internet.</div>
+                    </div>
+                `}
+            </div>
+
+            <div class="actions" style="grid-template-columns: 1fr;">
+                ${status.tunnel?.running ? `
+                    <button id="btn-toggle-tunnel" class="danger" style="font-weight: 600;">🛑 Stop Tunnel</button>
+                ` : `
+                    <button id="btn-toggle-tunnel" class="${status.running && config.apiKey ? 'success' : 'secondary'}" style="font-weight: 600;" ${!status.running || !config.apiKey ? 'disabled' : ''}>🚀 Go Live</button>
+                `}
+            </div>
+            ${!status.running || !config.apiKey ? `
+                <div class="muted" style="font-size: 10px; margin-top: 8px; text-align: center;">
+                    ${!status.running ? 'Start the server first. ' : ''}${!config.apiKey ? 'Enable authentication in Security settings.' : ''}
+                </div>
+            ` : ''}
         </div>
 
         <!-- MCP Status -->
@@ -2022,6 +2123,35 @@ print(response.choices[0].message.content)\`;
             var v = document.getElementById('rate-limit-input').value;
             vscode.postMessage({ type: 'setRateLimit', value: Number(v) || 0 });
         };
+
+        // Tunnel button handler
+        var tunnelBtn = document.getElementById('btn-toggle-tunnel');
+        if (tunnelBtn) {
+            tunnelBtn.onclick = function() {
+                var isTunnelActive = ${status.tunnel?.running ? 'true' : 'false'};
+                if (isTunnelActive) {
+                    vscode.postMessage({ type: 'stopTunnel' });
+                } else {
+                    this.textContent = '⏳ Starting...';
+                    this.disabled = true;
+                    vscode.postMessage({ type: 'startTunnel' });
+                }
+            };
+        }
+
+        // Copy tunnel URL button
+        var copyTunnelBtn = document.getElementById('btn-copy-tunnel-url');
+        if (copyTunnelBtn) {
+            copyTunnelBtn.onclick = function() {
+                var url = document.getElementById('tunnel-url')?.textContent;
+                if (url) {
+                    navigator.clipboard.writeText(url).then(function() {
+                        copyTunnelBtn.textContent = '✅ Copied!';
+                        setTimeout(function() { copyTunnelBtn.textContent = '📋 Copy URL'; }, 1500);
+                    });
+                }
+            };
+        }
 
         // Initialize on load
         // try { initCharts(); } catch (e) { console.error('Failed to init charts', e); }

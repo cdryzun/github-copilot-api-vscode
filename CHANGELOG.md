@@ -4,6 +4,16 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.5.0] - 2026-02-07
+
+### Added
+- **🌐 Internet Access via Cloudflare Tunnels:** Expose your API to the internet with a single click. Get a free public `*.trycloudflare.com` URL instantly — no account required. Perfect for accessing from your phone, sharing with friends, or remote development.
+- **Network Access Guide:** New "What's New" banner explaining the difference between localhost (127.0.0.1), LAN (0.0.0.0), and Cloudflare Tunnel access.
+- **Security Enforcement:** Tunnel requires API key authentication to be enabled before going live.
+
+### Changed
+- Dashboard UI improvements with better feature discovery.
+
 ## [2.1.5] - 2026-01-11
 
 ### Fixed

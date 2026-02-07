@@ -280,6 +280,12 @@ export class CopilotApiGateway implements vscode.Disposable {
 	private mcpService?: McpService;
 	private mcpInitPromise?: Promise<void>;
 
+	// Cloudflare Tunnel for internet access
+	private tunnelUrl: string | null = null;
+	private tunnelChild: ReturnType<typeof import('child_process').spawn> | null = null;
+	private readonly _onDidChangeTunnelStatus = new vscode.EventEmitter<{ running: boolean; url: string | null }>();
+	public readonly onDidChangeTunnelStatus = this._onDidChangeTunnelStatus.event;
+
 	constructor(private readonly output: vscode.OutputChannel, private readonly statusItem: vscode.StatusBarItem, context: vscode.ExtensionContext) {
 		this.context = context;
 		this.auditService = new AuditService(context);
@@ -352,7 +358,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 			realtimeStats: this.realtimeStats,
 			historyCount: this.requestHistory.length,
 			mcp: this.getMcpStatus(),
-			copilot: await this.getCopilotHealth()
+			copilot: await this.getCopilotHealth(),
+			tunnel: this.getTunnelStatus()
 		};
 	}
 
@@ -893,6 +900,149 @@ export class CopilotApiGateway implements vscode.Disposable {
 		await this.updateServerConfig({ maxConcurrentRequests: normalized });
 	}
 
+	// =====================
+	// Cloudflare Tunnel
+	// =====================
+
+	/**
+	 * Get current tunnel status
+	 */
+	public getTunnelStatus(): { running: boolean; url: string | null } {
+		return {
+			running: this.tunnelChild !== null,
+			url: this.tunnelUrl
+		};
+	}
+
+	/**
+	 * Start Cloudflare Quick Tunnel to expose the API to internet
+	 * Requires: Server running + API key configured (for security)
+	 */
+	public async startTunnel(): Promise<{ success: boolean; url?: string; error?: string }> {
+		// Validate preconditions
+		if (!this.httpServer) {
+			return { success: false, error: 'Server must be running before starting tunnel' };
+		}
+		if (!this.config.apiKey) {
+			return { success: false, error: 'Authentication (API key) must be enabled for security when exposing to internet' };
+		}
+		if (this.tunnelChild) {
+			return { success: true, url: this.tunnelUrl ?? undefined };
+		}
+
+		try {
+			this.logInfo('Starting Cloudflare tunnel...');
+
+			// Use the cloudflared npm package
+			// Compute the correct binary path from extension context (works in VS Code runtime)
+			const { Tunnel, use } = await import('cloudflared');
+			const path = await import('path');
+			const extensionPath = this.context?.extensionPath ?? __dirname;
+			const cloudflaredBin = path.join(
+				extensionPath,
+				'node_modules',
+				'cloudflared',
+				'bin',
+				process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
+			);
+			this.logInfo(`Using cloudflared binary: ${cloudflaredBin}`);
+			use(cloudflaredBin);
+
+			const localUrl = `http://${this.config.host === '0.0.0.0' ? '127.0.0.1' : this.config.host}:${this.config.port}`;
+
+			// Create a quick tunnel (no Cloudflare account needed)
+			const tunnelInstance = Tunnel.quick(localUrl);
+
+			// Store the process for cleanup
+			this.tunnelChild = tunnelInstance.process;
+
+			// Wait for the tunnel URL
+			const tunnelUrl = await new Promise<string>((resolve, reject) => {
+				const timeout = setTimeout(() => {
+					reject(new Error('Timeout waiting for tunnel URL (30s)'));
+				}, 30000);
+
+				tunnelInstance.once('url', (url: string) => {
+					clearTimeout(timeout);
+					resolve(url);
+				});
+
+				tunnelInstance.once('error', (err: Error) => {
+					clearTimeout(timeout);
+					reject(err);
+				});
+			});
+
+			this.tunnelUrl = tunnelUrl;
+
+			this.logInfo(`Cloudflare tunnel started: ${tunnelUrl}`);
+			this._onDidChangeTunnelStatus.fire({ running: true, url: tunnelUrl });
+			this._onDidChangeStatus.fire();
+
+			// Handle tunnel exit
+			tunnelInstance.on('exit', (code: number | null) => {
+				this.logInfo(`Cloudflare tunnel exited with code ${code}`);
+				this.tunnelChild = null;
+				this.tunnelUrl = null;
+				this._onDidChangeTunnelStatus.fire({ running: false, url: null });
+				this._onDidChangeStatus.fire();
+			});
+
+			return { success: true, url: tunnelUrl };
+		} catch (error) {
+			const errMessage = error instanceof Error ? error.message : String(error);
+			this.logError('Failed to start Cloudflare tunnel', error);
+			this.tunnelChild = null;
+			this.tunnelUrl = null;
+			return { success: false, error: `Failed to start tunnel: ${errMessage}. Make sure cloudflared is installed or the extension can download it.` };
+		}
+	}
+
+	/**
+	 * Stop the Cloudflare tunnel
+	 */
+	public async stopTunnel(): Promise<void> {
+		if (!this.tunnelChild) {
+			return;
+		}
+
+		this.logInfo('Stopping Cloudflare tunnel...');
+
+		try {
+			// Try graceful shutdown first
+			this.tunnelChild.kill('SIGTERM');
+
+			// Wait briefly for graceful exit
+			await new Promise<void>((resolve) => {
+				const timeout = setTimeout(() => {
+					// Force kill if still running
+					if (this.tunnelChild) {
+						this.tunnelChild.kill('SIGKILL');
+					}
+					resolve();
+				}, 2000);
+
+				if (this.tunnelChild) {
+					this.tunnelChild.once('exit', () => {
+						clearTimeout(timeout);
+						resolve();
+					});
+				} else {
+					clearTimeout(timeout);
+					resolve();
+				}
+			});
+		} catch (error) {
+			this.logError('Error stopping tunnel', error);
+		}
+
+		this.tunnelChild = null;
+		this.tunnelUrl = null;
+		this._onDidChangeTunnelStatus.fire({ running: false, url: null });
+		this._onDidChangeStatus.fire();
+		this.logInfo('Cloudflare tunnel stopped');
+	}
+
 	async start(): Promise<void> {
 		if (this.disposed) {
 			return;
@@ -1149,6 +1299,11 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 		}
 		this.connections.clear();
+
+		// Stop Cloudflare tunnel if running
+		await this.stopTunnel().catch(error => {
+			this.logError('Failed to stop tunnel during dispose', error);
+		});
 
 		await this.stop().catch(error => {
 			this.logError('Failed to stop API server during dispose', error);
