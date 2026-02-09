@@ -53364,30 +53364,63 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
     } catch (e) {
       console.error("Token counting failed:", e);
     }
+    const createdAt = Math.floor(Date.now() / 1e3);
     return {
       id: `resp-${(0, import_crypto.randomUUID)()}`,
       object: "response",
-      created_at: Math.floor(Date.now() / 1e3),
+      created_at: createdAt,
+      completed_at: createdAt,
       model,
       status: "completed",
+      error: null,
+      incomplete_details: null,
+      instructions: payload.instructions ?? null,
+      max_output_tokens: payload.max_output_tokens ?? null,
       output: [
         {
           type: "message",
           id: `msg-${(0, import_crypto.randomUUID)()}`,
+          status: "completed",
           role: "assistant",
           content: [
             {
               type: "output_text",
-              text: text || ""
+              text: text || "",
+              annotations: []
             }
           ]
         }
       ],
+      parallel_tool_calls: true,
+      previous_response_id: payload.previous_response_id ?? null,
+      reasoning: {
+        effort: payload.reasoning?.effort ?? null,
+        summary: null
+      },
+      store: payload.store ?? true,
+      temperature: payload.temperature ?? 1,
+      text: {
+        format: {
+          type: "text"
+        }
+      },
+      tool_choice: payload.tool_choice ?? "auto",
+      tools: payload.tools ?? [],
+      top_p: payload.top_p ?? 1,
+      truncation: "disabled",
       usage: {
         input_tokens: inputTokens,
+        input_tokens_details: {
+          cached_tokens: 0
+        },
         output_tokens: outputTokens,
+        output_tokens_details: {
+          reasoning_tokens: 0
+        },
         total_tokens: inputTokens + outputTokens
-      }
+      },
+      user: null,
+      metadata: payload.metadata ?? {}
     };
   }
   async processStreamingResponsesApi(payload, req, res, logRequestId, logRequestStart) {
@@ -53452,16 +53485,56 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
         throw new ApiError(404, `Model "${model}" not found.`, "invalid_request_error", "model_not_found");
       }
       const lmResponse = await selectedModel.sendRequest(lmMessages, {}, cts.token);
+      const createdAt = Math.floor(Date.now() / 1e3);
       res.write(`event: response.created
 data: ${JSON.stringify({
         type: "response.created",
         response: {
           id: responseId,
           object: "response",
-          created_at: Math.floor(Date.now() / 1e3),
+          created_at: createdAt,
+          completed_at: null,
           model,
           status: "in_progress",
-          output: []
+          error: null,
+          incomplete_details: null,
+          instructions: payload.instructions ?? null,
+          max_output_tokens: payload.max_output_tokens ?? null,
+          output: [],
+          parallel_tool_calls: true,
+          previous_response_id: payload.previous_response_id ?? null,
+          reasoning: {
+            effort: payload.reasoning?.effort ?? null,
+            summary: null
+          },
+          store: payload.store ?? true,
+          temperature: payload.temperature ?? 1,
+          text: {
+            format: {
+              type: "text"
+            }
+          },
+          tool_choice: payload.tool_choice ?? "auto",
+          tools: payload.tools ?? [],
+          top_p: payload.top_p ?? 1,
+          truncation: "disabled",
+          usage: null,
+          user: null,
+          metadata: payload.metadata ?? {}
+        }
+      })}
+
+`);
+      res.write(`event: response.output_item.added
+data: ${JSON.stringify({
+        type: "response.output_item.added",
+        output_index: 0,
+        item: {
+          type: "message",
+          id: messageId,
+          status: "in_progress",
+          role: "assistant",
+          content: []
         }
       })}
 
@@ -53470,8 +53543,9 @@ data: ${JSON.stringify({
 data: ${JSON.stringify({
         type: "response.content_part.added",
         item_id: messageId,
+        output_index: 0,
         content_index: 0,
-        part: { type: "output_text", text: "" }
+        part: { type: "output_text", text: "", annotations: [] }
       })}
 
 `);
@@ -53497,8 +53571,23 @@ data: ${JSON.stringify({
 data: ${JSON.stringify({
           type: "response.content_part.done",
           item_id: messageId,
+          output_index: 0,
           content_index: 0,
-          part: { type: "output_text", text: totalContent }
+          part: { type: "output_text", text: totalContent, annotations: [] }
+        })}
+
+`);
+        res.write(`event: response.output_item.done
+data: ${JSON.stringify({
+          type: "response.output_item.done",
+          output_index: 0,
+          item: {
+            type: "message",
+            id: messageId,
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text: totalContent, annotations: [] }]
+          }
         })}
 
 `);
@@ -53510,26 +53599,58 @@ data: ${JSON.stringify({
           outputTokens = await selectedModel.countTokens(totalContent);
         } catch (e) {
         }
+        const completedAt = Math.floor(Date.now() / 1e3);
         res.write(`event: response.completed
 data: ${JSON.stringify({
           type: "response.completed",
           response: {
             id: responseId,
             object: "response",
-            created_at: Math.floor(Date.now() / 1e3),
+            created_at: createdAt,
+            completed_at: completedAt,
             model,
             status: "completed",
+            error: null,
+            incomplete_details: null,
+            instructions: payload.instructions ?? null,
+            max_output_tokens: payload.max_output_tokens ?? null,
             output: [{
               type: "message",
               id: messageId,
+              status: "completed",
               role: "assistant",
-              content: [{ type: "output_text", text: totalContent }]
+              content: [{ type: "output_text", text: totalContent, annotations: [] }]
             }],
+            parallel_tool_calls: true,
+            previous_response_id: payload.previous_response_id ?? null,
+            reasoning: {
+              effort: payload.reasoning?.effort ?? null,
+              summary: null
+            },
+            store: payload.store ?? true,
+            temperature: payload.temperature ?? 1,
+            text: {
+              format: {
+                type: "text"
+              }
+            },
+            tool_choice: payload.tool_choice ?? "auto",
+            tools: payload.tools ?? [],
+            top_p: payload.top_p ?? 1,
+            truncation: "disabled",
             usage: {
               input_tokens: inputTokens,
+              input_tokens_details: {
+                cached_tokens: 0
+              },
               output_tokens: outputTokens,
+              output_tokens_details: {
+                reasoning_tokens: 0
+              },
               total_tokens: inputTokens + outputTokens
-            }
+            },
+            user: null,
+            metadata: payload.metadata ?? {}
           }
         })}
 
@@ -53598,7 +53719,7 @@ data: ${JSON.stringify({
       }
       const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
       if (!lmModel) {
-        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+        throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
       const result = await lmModel.sendRequest(messages, {}, new vscode4.CancellationTokenSource().token);
       let output = "";
@@ -53671,7 +53792,7 @@ data: ${JSON.stringify({
       }
       const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
       if (!lmModel) {
-        throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+        throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
       const result = await lmModel.sendRequest(messages, {}, new vscode4.CancellationTokenSource().token);
       let output = "";
@@ -53724,7 +53845,7 @@ data: ${JSON.stringify({
     }
     const selectedModel = this.findCopilotModel(model, copilotModels);
     if (!selectedModel) {
-      throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
     }
     const baseTools = this.normalizeTools(payload?.tools || payload?.functions) || [];
     const mcpService = await this.ensureMcpService();
@@ -53763,7 +53884,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
             role: "assistant",
             content: result.content || null,
             tool_calls: result.toolCalls.map((tc) => ({
-              id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)}`,
+              id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)} `,
               type: "function",
               function: {
                 name: tc.name,
@@ -53783,15 +53904,15 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
               const toolResult = await mcp.callTool(serverName, toolName, tc.arguments);
               messages.push({
                 role: "tool",
-                tool_call_id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)}`,
+                tool_call_id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)} `,
                 // Best effort ID mapping
                 content: JSON.stringify(toolResult)
               });
             } catch (error2) {
               messages.push({
                 role: "tool",
-                tool_call_id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)}`,
-                content: `Error executing MCP tool: ${error2.message}`
+                tool_call_id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)} `,
+                content: `Error executing MCP tool: ${error2.message} `
               });
             }
           }
@@ -53821,7 +53942,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     if (result.toolCalls && result.toolCalls.length > 0) {
       return {
-        id: `chatcmpl-${(0, import_crypto.randomUUID)()}`,
+        id: `chatcmpl - ${(0, import_crypto.randomUUID)()} `,
         object: "chat.completion",
         created,
         model,
@@ -53832,7 +53953,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
               role: "assistant",
               content: result.content || null,
               tool_calls: result.toolCalls.map((tc, idx) => ({
-                id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)}`,
+                id: `call_${(0, import_crypto.randomUUID)().slice(0, 24)} `,
                 type: "function",
                 function: {
                   name: tc.name,
@@ -53852,7 +53973,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       };
     }
     return {
-      id: `chatcmpl-${(0, import_crypto.randomUUID)()}`,
+      id: `chatcmpl - ${(0, import_crypto.randomUUID)()} `,
       object: "chat.completion",
       created,
       model,
@@ -53912,7 +54033,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
       switch (msg.role) {
         case "system":
-          lmMessages.push(vscode4.LanguageModelChatMessage.User(`[System]: ${content}`));
+          lmMessages.push(vscode4.LanguageModelChatMessage.User(`[System]: ${content} `));
           break;
         case "user":
           lmMessages.push(vscode4.LanguageModelChatMessage.User(content));
@@ -53920,7 +54041,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
         case "assistant":
           if (msg.tool_calls && msg.tool_calls.length > 0) {
             const toolCallInfo = msg.tool_calls.map(
-              (tc) => `[Called function: $ { tc.function?.name || tc.name }(${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
+              (tc) => `[Called function: $ { tc.function?.name || tc.name } (${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
             ).join("\n");
             lmMessages.push(vscode4.LanguageModelChatMessage.Assistant(toolCallInfo));
           } else {
@@ -53952,7 +54073,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       const toolCalls = [];
       for await (const part of response.stream) {
         if (cts.token.isCancellationRequested) {
-          throw new ApiError(504, `Request timed out after ${this.config.requestTimeoutSeconds}s. Try a shorter prompt or check your network connection.`, "gateway_timeout", "request_timeout");
+          throw new ApiError(504, `Request timed out after ${this.config.requestTimeoutSeconds} s.Try a shorter prompt or check your network connection.`, "gateway_timeout", "request_timeout");
         }
         if (part instanceof vscode4.LanguageModelTextPart) {
           textContent += part.value;
@@ -53993,7 +54114,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     const selectedModel = this.findCopilotModel(model, copilotModels);
     if (!selectedModel) {
-      throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
+      throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")} `, "invalid_request_error", "model_not_found");
     }
     const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt, selectedModel));
     const created = Math.floor(Date.now() / 1e3);
@@ -54038,7 +54159,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     prompt = this.redactPromptString(prompt);
     const model = this.resolveModel(payload?.model);
-    const completionId = `cmpl-${(0, import_crypto.randomUUID)()}`;
+    const completionId = `cmpl - ${(0, import_crypto.randomUUID)()} `;
     const created = Math.floor(Date.now() / 1e3);
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -54049,7 +54170,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     const cts = new vscode4.CancellationTokenSource();
     req.on("close", () => {
       cts.cancel();
-      console.log(`[Completions] Client disconnected, cancelling request ${logRequestId || ""}`);
+      console.log(`[Completions] Client disconnected, cancelling request ${logRequestId || ""} `);
     });
     let totalContent = "";
     try {
@@ -54081,7 +54202,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
               logprobs: null
             }]
           };
-          res.write(`data: ${JSON.stringify(chunk)}
+          res.write(`data: ${JSON.stringify(chunk)} 
 
 `);
         }
@@ -54099,7 +54220,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
             logprobs: null
           }]
         };
-        res.write(`data: ${JSON.stringify(finalChunk)}
+        res.write(`data: ${JSON.stringify(finalChunk)} 
 
 `);
         res.write("data: [DONE]\n\n");
@@ -54127,7 +54248,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       }
       console.error("Completions streaming error:", error2);
       const apiError = error2 instanceof ApiError ? error2 : new ApiError(500, error2.message || "Internal Server Error", "api_error");
-      res.write(`data: ${JSON.stringify({ error: { message: apiError.message, type: apiError.type, code: apiError.code } })}
+      res.write(`data: ${JSON.stringify({ error: { message: apiError.message, type: apiError.type, code: apiError.code } })} 
 
 `);
       res.end();
@@ -54165,7 +54286,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
         await this.handleGoogleWebSocketMessage(socket, payload, type);
         return;
       default:
-        throw new ApiError(400, `Unknown WebSocket endpoint: ${endpoint}`, "invalid_request_error", "unknown_endpoint");
+        throw new ApiError(400, `Unknown WebSocket endpoint: ${endpoint} `, "invalid_request_error", "unknown_endpoint");
     }
   }
   async handleOpenAIWebSocketMessage(socket, payload, type, endpoint) {
@@ -54184,7 +54305,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       socket.send(JSON.stringify({ type: "completion.result", data: response }));
       return;
     }
-    throw new ApiError(400, `Unsupported OpenAI WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
+    throw new ApiError(400, `Unsupported OpenAI WebSocket message type: ${type} `, "invalid_request_error", "unsupported_ws_message");
   }
   async handleAnthropicWebSocketMessage(socket, payload, type) {
     if (!type || type === "messages.create") {
@@ -54193,7 +54314,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       socket.send(JSON.stringify({ type: "message.result", data: response }));
       return;
     }
-    throw new ApiError(400, `Unsupported Anthropic WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
+    throw new ApiError(400, `Unsupported Anthropic WebSocket message type: ${type} `, "invalid_request_error", "unsupported_ws_message");
   }
   async handleGoogleWebSocketMessage(socket, payload, type) {
     if (!type || type === "generateContent") {
@@ -54203,7 +54324,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
       socket.send(JSON.stringify({ type: "content.result", data: response }));
       return;
     }
-    throw new ApiError(400, `Unsupported Google WebSocket message type: ${type}`, "invalid_request_error", "unsupported_ws_message");
+    throw new ApiError(400, `Unsupported Google WebSocket message type: ${type} `, "invalid_request_error", "unsupported_ws_message");
   }
   handleWebSocketConnection(socket, endpoint) {
     socket.send(JSON.stringify({
@@ -54231,7 +54352,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
   }
   async runWithConcurrency(task) {
     if (this.activeRequests >= this.config.maxConcurrentRequests) {
-      throw new ApiError(429, `Too many concurrent requests (max ${this.config.maxConcurrentRequests}). Your request has been queued. Try again in a moment.`, "rate_limit_exceeded", "concurrency_limit");
+      throw new ApiError(429, `Too many concurrent requests(max ${this.config.maxConcurrentRequests}).Your request has been queued.Try again in a moment.`, "rate_limit_exceeded", "concurrency_limit");
     }
     this.activeRequests += 1;
     try {
@@ -54462,34 +54583,34 @@ ${text} `;
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copilot API - Swagger UI</title>
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-    <style>
-        body { margin: 0; background: #fafafa; }
-        .swagger-ui .topbar { display: none; }
-        .swagger-ui .info { margin: 30px 0; }
-        .swagger-ui .info .title { font-size: 2em; }
-    </style>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Copilot API - Swagger UI</title>
+	<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+	<style>
+		body { margin: 0; background: #fafafa; }
+		.swagger-ui .topbar { display: none; }
+		.swagger-ui .info { margin: 30px 0; }
+		.swagger-ui .info .title { font-size: 2em; }
+	</style>
 </head>
 <body>
-    <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-    <script>
-        window.onload = function() {
-            SwaggerUIBundle({
-                url: '/openapi.json',
-                dom_id: '#swagger-ui',
-                presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-                layout: 'BaseLayout',
-                deepLinking: true,
-                showExtensions: true,
-                showCommonExtensions: true
-            });
-        };
-    </script>
+	<div id="swagger-ui"></div>
+	<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+	<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+	<script>
+		window.onload = function() {
+			SwaggerUIBundle({
+				url: '/openapi.json',
+				dom_id: '#swagger-ui',
+				presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+				layout: 'BaseLayout',
+				deepLinking: true,
+				showExtensions: true,
+				showCommonExtensions: true
+			});
+		};
+	</script>
 </body>
 </html>`;
     res.statusCode = 200;

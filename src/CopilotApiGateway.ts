@@ -195,19 +195,50 @@ export interface ResponsesApiResponse {
 	id: string;
 	object: 'response';
 	created_at: number;
+	completed_at: number | null;
 	model: string;
 	status: 'completed' | 'failed' | 'in_progress' | 'cancelled';
+	error: { type: string; message: string } | null;
+	incomplete_details: { reason: string } | null;
+	instructions: string | null;
+	max_output_tokens: number | null;
 	output: Array<{
 		type: 'message';
 		id: string;
+		status: 'completed' | 'in_progress' | 'incomplete';
 		role: 'assistant';
-		content: Array<{ type: 'output_text'; text: string }>;
+		content: Array<{ type: 'output_text'; text: string; annotations: any[] }>;
 	}>;
+	parallel_tool_calls: boolean;
+	previous_response_id: string | null;
+	reasoning: {
+		effort: 'low' | 'medium' | 'high' | null;
+		summary: string | null;
+	};
+	store: boolean;
+	temperature: number;
+	text: {
+		format: {
+			type: 'text' | 'json_object' | 'json_schema';
+		};
+	};
+	tool_choice: string | object;
+	tools: any[];
+	top_p: number;
+	truncation: 'auto' | 'disabled';
 	usage: {
 		input_tokens: number;
+		input_tokens_details: {
+			cached_tokens: number;
+		};
 		output_tokens: number;
+		output_tokens_details: {
+			reasoning_tokens: number;
+		};
 		total_tokens: number;
 	};
+	user: string | null;
+	metadata: Record<string, string>;
 }
 
 type ChatEndpointContext = {
@@ -2420,30 +2451,63 @@ export class CopilotApiGateway implements vscode.Disposable {
 			console.error('Token counting failed:', e);
 		}
 
+		const createdAt = Math.floor(Date.now() / 1000);
 		return {
 			id: `resp-${randomUUID()}`,
 			object: 'response',
-			created_at: Math.floor(Date.now() / 1000),
+			created_at: createdAt,
+			completed_at: createdAt,
 			model,
 			status: 'completed',
+			error: null,
+			incomplete_details: null,
+			instructions: payload.instructions ?? null,
+			max_output_tokens: payload.max_output_tokens ?? null,
 			output: [
 				{
 					type: 'message',
 					id: `msg-${randomUUID()}`,
+					status: 'completed',
 					role: 'assistant',
 					content: [
 						{
 							type: 'output_text',
-							text: text || ''
+							text: text || '',
+							annotations: []
 						}
 					]
 				}
 			],
+			parallel_tool_calls: true,
+			previous_response_id: payload.previous_response_id ?? null,
+			reasoning: {
+				effort: payload.reasoning?.effort ?? null,
+				summary: null
+			},
+			store: payload.store ?? true,
+			temperature: payload.temperature ?? 1.0,
+			text: {
+				format: {
+					type: 'text'
+				}
+			},
+			tool_choice: payload.tool_choice ?? 'auto',
+			tools: payload.tools ?? [],
+			top_p: payload.top_p ?? 1.0,
+			truncation: 'disabled',
 			usage: {
 				input_tokens: inputTokens,
+				input_tokens_details: {
+					cached_tokens: 0
+				},
 				output_tokens: outputTokens,
+				output_tokens_details: {
+					reasoning_tokens: 0
+				},
 				total_tokens: inputTokens + outputTokens
-			}
+			},
+			user: null,
+			metadata: payload.metadata ?? {}
 		};
 	}
 
@@ -2529,16 +2593,57 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 			const lmResponse = await selectedModel.sendRequest(lmMessages, {}, cts.token);
 
-			// Send response.created event
+			// Store createdAt timestamp for consistency
+			const createdAt = Math.floor(Date.now() / 1000);
+
+			// Send response.created event with full spec fields
 			res.write(`event: response.created\ndata: ${JSON.stringify({
 				type: 'response.created',
 				response: {
 					id: responseId,
 					object: 'response',
-					created_at: Math.floor(Date.now() / 1000),
+					created_at: createdAt,
+					completed_at: null,
 					model,
 					status: 'in_progress',
-					output: []
+					error: null,
+					incomplete_details: null,
+					instructions: payload.instructions ?? null,
+					max_output_tokens: payload.max_output_tokens ?? null,
+					output: [],
+					parallel_tool_calls: true,
+					previous_response_id: payload.previous_response_id ?? null,
+					reasoning: {
+						effort: payload.reasoning?.effort ?? null,
+						summary: null
+					},
+					store: payload.store ?? true,
+					temperature: payload.temperature ?? 1.0,
+					text: {
+						format: {
+							type: 'text'
+						}
+					},
+					tool_choice: payload.tool_choice ?? 'auto',
+					tools: payload.tools ?? [],
+					top_p: payload.top_p ?? 1.0,
+					truncation: 'disabled',
+					usage: null,
+					user: null,
+					metadata: payload.metadata ?? {}
+				}
+			})}\n\n`);
+
+			// Send response.output_item.added event (before content_part.added)
+			res.write(`event: response.output_item.added\ndata: ${JSON.stringify({
+				type: 'response.output_item.added',
+				output_index: 0,
+				item: {
+					type: 'message',
+					id: messageId,
+					status: 'in_progress',
+					role: 'assistant',
+					content: []
 				}
 			})}\n\n`);
 
@@ -2546,8 +2651,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 			res.write(`event: response.content_part.added\ndata: ${JSON.stringify({
 				type: 'response.content_part.added',
 				item_id: messageId,
+				output_index: 0,
 				content_index: 0,
-				part: { type: 'output_text', text: '' }
+				part: { type: 'output_text', text: '', annotations: [] }
 			})}\n\n`);
 
 			// Stream the content
@@ -2569,8 +2675,22 @@ export class CopilotApiGateway implements vscode.Disposable {
 				res.write(`event: response.content_part.done\ndata: ${JSON.stringify({
 					type: 'response.content_part.done',
 					item_id: messageId,
+					output_index: 0,
 					content_index: 0,
-					part: { type: 'output_text', text: totalContent }
+					part: { type: 'output_text', text: totalContent, annotations: [] }
+				})}\n\n`);
+
+				// Send response.output_item.done event
+				res.write(`event: response.output_item.done\ndata: ${JSON.stringify({
+					type: 'response.output_item.done',
+					output_index: 0,
+					item: {
+						type: 'message',
+						id: messageId,
+						status: 'completed',
+						role: 'assistant',
+						content: [{ type: 'output_text', text: totalContent, annotations: [] }]
+					}
 				})}\n\n`);
 
 				// Send response.completed event
@@ -2582,25 +2702,57 @@ export class CopilotApiGateway implements vscode.Disposable {
 					outputTokens = await selectedModel.countTokens(totalContent);
 				} catch (e) { }
 
+				const completedAt = Math.floor(Date.now() / 1000);
 				res.write(`event: response.completed\ndata: ${JSON.stringify({
 					type: 'response.completed',
 					response: {
 						id: responseId,
 						object: 'response',
-						created_at: Math.floor(Date.now() / 1000),
+						created_at: createdAt,
+						completed_at: completedAt,
 						model,
 						status: 'completed',
+						error: null,
+						incomplete_details: null,
+						instructions: payload.instructions ?? null,
+						max_output_tokens: payload.max_output_tokens ?? null,
 						output: [{
 							type: 'message',
 							id: messageId,
+							status: 'completed',
 							role: 'assistant',
-							content: [{ type: 'output_text', text: totalContent }]
+							content: [{ type: 'output_text', text: totalContent, annotations: [] }]
 						}],
+						parallel_tool_calls: true,
+						previous_response_id: payload.previous_response_id ?? null,
+						reasoning: {
+							effort: payload.reasoning?.effort ?? null,
+							summary: null
+						},
+						store: payload.store ?? true,
+						temperature: payload.temperature ?? 1.0,
+						text: {
+							format: {
+								type: 'text'
+							}
+						},
+						tool_choice: payload.tool_choice ?? 'auto',
+						tools: payload.tools ?? [],
+						top_p: payload.top_p ?? 1.0,
+						truncation: 'disabled',
 						usage: {
 							input_tokens: inputTokens,
+							input_tokens_details: {
+								cached_tokens: 0
+							},
 							output_tokens: outputTokens,
+							output_tokens_details: {
+								reasoning_tokens: 0
+							},
 							total_tokens: inputTokens + outputTokens
-						}
+						},
+						user: null,
+						metadata: payload.metadata ?? {}
 					}
 				})}\n\n`);
 
@@ -2624,7 +2776,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 			res.write(`event: error\ndata: ${JSON.stringify({
 				type: 'error',
 				error: { type: apiError.type, message: apiError.message, code: apiError.code }
-			})}\n\n`);
+			})
+				}\n\n`);
 			res.end();
 		} finally {
 			clearInterval(heartbeat);
@@ -2670,7 +2823,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 			const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
 			if (!lmModel) {
-				throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
+				throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
 			}
 			const result = await lmModel.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
 
@@ -2756,7 +2909,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			}
 			const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
 			if (!lmModel) {
-				throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
+				throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
 			}
 			const result = await lmModel.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
 
@@ -2824,7 +2977,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		}
 		const selectedModel = this.findCopilotModel(model, copilotModels);
 		if (!selectedModel) {
-			throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
+			throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
 		}
 
 		const baseTools = this.normalizeTools(payload?.tools || payload?.functions) || [];
@@ -2872,7 +3025,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 						role: 'assistant',
 						content: result.content || null,
 						tool_calls: result.toolCalls.map((tc: any) => ({
-							id: `call_${randomUUID().slice(0, 24)}`,
+							id: `call_${randomUUID().slice(0, 24)} `,
 							type: 'function',
 							function: {
 								name: tc.name,
@@ -2895,14 +3048,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 							const toolResult = await mcp.callTool(serverName, toolName, tc.arguments);
 							messages.push({
 								role: 'tool',
-								tool_call_id: `call_${randomUUID().slice(0, 24)}`, // Best effort ID mapping
+								tool_call_id: `call_${randomUUID().slice(0, 24)} `, // Best effort ID mapping
 								content: JSON.stringify(toolResult)
 							});
 						} catch (error: any) {
 							messages.push({
 								role: 'tool',
-								tool_call_id: `call_${randomUUID().slice(0, 24)}`,
-								content: `Error executing MCP tool: ${error.message}`
+								tool_call_id: `call_${randomUUID().slice(0, 24)} `,
+								content: `Error executing MCP tool: ${error.message} `
 							});
 						}
 					}
@@ -2944,7 +3097,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		// Check if the FINAL iteration requested tool calls (that we didn't handle, i.e. client tools)
 		if (result.toolCalls && result.toolCalls.length > 0) {
 			return {
-				id: `chatcmpl-${randomUUID()}`,
+				id: `chatcmpl - ${randomUUID()} `,
 				object: 'chat.completion',
 				created,
 				model,
@@ -2955,7 +3108,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 							role: 'assistant',
 							content: result.content || null,
 							tool_calls: result.toolCalls.map((tc: any, idx: number) => ({
-								id: `call_${randomUUID().slice(0, 24)}`,
+								id: `call_${randomUUID().slice(0, 24)} `,
 								type: 'function',
 								function: {
 									name: tc.name,
@@ -2979,7 +3132,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 		// Normal text response
 		return {
-			id: `chatcmpl-${randomUUID()}`,
+			id: `chatcmpl - ${randomUUID()} `,
 			object: 'chat.completion',
 			created,
 			model,
@@ -3058,7 +3211,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 			switch (msg.role) {
 				case 'system':
-					lmMessages.push(vscode.LanguageModelChatMessage.User(`[System]: ${content}`));
+					lmMessages.push(vscode.LanguageModelChatMessage.User(`[System]: ${content} `));
 					break;
 				case 'user':
 					lmMessages.push(vscode.LanguageModelChatMessage.User(content));
@@ -3067,7 +3220,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 					if (msg.tool_calls && msg.tool_calls.length > 0) {
 						// Assistant message with tool calls - include tool call info
 						const toolCallInfo = msg.tool_calls.map((tc: any) =>
-							`[Called function: $ { tc.function?.name || tc.name }(${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
+							`[Called function: $ { tc.function?.name || tc.name } (${tc.function?.arguments || JSON.stringify(tc.arguments)})]`
 						).join('\n');
 						lmMessages.push(vscode.LanguageModelChatMessage.Assistant(toolCallInfo));
 					} else {
@@ -3111,7 +3264,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			// Process the response stream
 			for await (const part of response.stream) {
 				if (cts.token.isCancellationRequested) {
-					throw new ApiError(504, `Request timed out after ${this.config.requestTimeoutSeconds}s. Try a shorter prompt or check your network connection.`, 'gateway_timeout', 'request_timeout');
+					throw new ApiError(504, `Request timed out after ${this.config.requestTimeoutSeconds} s.Try a shorter prompt or check your network connection.`, 'gateway_timeout', 'request_timeout');
 				}
 				if (part instanceof vscode.LanguageModelTextPart) {
 					textContent += part.value;
@@ -3159,7 +3312,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		}
 		const selectedModel = this.findCopilotModel(model, copilotModels);
 		if (!selectedModel) {
-			throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map(m => m.id).join(', ')}`, 'invalid_request_error', 'model_not_found');
+			throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map(m => m.id).join(', ')} `, 'invalid_request_error', 'model_not_found');
 		}
 
 		const text = await this.runWithConcurrency(() => this.invokeCopilot(prompt, selectedModel));
@@ -3214,7 +3367,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		// Apply redaction
 		prompt = this.redactPromptString(prompt);
 		const model = this.resolveModel(payload?.model);
-		const completionId = `cmpl-${randomUUID()}`;
+		const completionId = `cmpl - ${randomUUID()} `;
 		const created = Math.floor(Date.now() / 1000);
 
 		// Set SSE headers
@@ -3228,7 +3381,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 		const cts = new vscode.CancellationTokenSource();
 		req.on('close', () => {
 			cts.cancel();
-			console.log(`[Completions] Client disconnected, cancelling request ${logRequestId || ''}`);
+			console.log(`[Completions] Client disconnected, cancelling request ${logRequestId || ''} `);
 		});
 
 		let totalContent = '';
@@ -3263,7 +3416,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 							logprobs: null
 						}]
 					};
-					res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+					res.write(`data: ${JSON.stringify(chunk)} \n\n`);
 				}
 			}
 
@@ -3281,7 +3434,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 						logprobs: null
 					}]
 				};
-				res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+				res.write(`data: ${JSON.stringify(finalChunk)} \n\n`);
 				res.write('data: [DONE]\n\n');
 				res.end();
 
@@ -3308,7 +3461,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			if (cts.token.isCancellationRequested) { return; }
 			console.error('Completions streaming error:', error);
 			const apiError = error instanceof ApiError ? error : new ApiError(500, error.message || 'Internal Server Error', 'api_error');
-			res.write(`data: ${JSON.stringify({ error: { message: apiError.message, type: apiError.type, code: apiError.code } })}\n\n`);
+			res.write(`data: ${JSON.stringify({ error: { message: apiError.message, type: apiError.type, code: apiError.code } })} \n\n`);
 			res.end();
 		} finally {
 			cts.dispose();
@@ -3352,7 +3505,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 				await this.handleGoogleWebSocketMessage(socket, payload, type);
 				return;
 			default:
-				throw new ApiError(400, `Unknown WebSocket endpoint: ${endpoint}`, 'invalid_request_error', 'unknown_endpoint');
+				throw new ApiError(400, `Unknown WebSocket endpoint: ${endpoint} `, 'invalid_request_error', 'unknown_endpoint');
 		}
 	}
 
@@ -3375,7 +3528,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		throw new ApiError(400, `Unsupported OpenAI WebSocket message type: ${type}`, 'invalid_request_error', 'unsupported_ws_message');
+		throw new ApiError(400, `Unsupported OpenAI WebSocket message type: ${type} `, 'invalid_request_error', 'unsupported_ws_message');
 	}
 
 	private async handleAnthropicWebSocketMessage(socket: WebSocket, payload: any, type: string | undefined): Promise<void> {
@@ -3386,7 +3539,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		throw new ApiError(400, `Unsupported Anthropic WebSocket message type: ${type}`, 'invalid_request_error', 'unsupported_ws_message');
+		throw new ApiError(400, `Unsupported Anthropic WebSocket message type: ${type} `, 'invalid_request_error', 'unsupported_ws_message');
 	}
 
 	private async handleGoogleWebSocketMessage(socket: WebSocket, payload: any, type: string | undefined): Promise<void> {
@@ -3398,7 +3551,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return;
 		}
 
-		throw new ApiError(400, `Unsupported Google WebSocket message type: ${type}`, 'invalid_request_error', 'unsupported_ws_message');
+		throw new ApiError(400, `Unsupported Google WebSocket message type: ${type} `, 'invalid_request_error', 'unsupported_ws_message');
 	}
 
 
@@ -3431,7 +3584,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 	private async runWithConcurrency<T>(task: () => Promise<T>): Promise<T> {
 		if (this.activeRequests >= this.config.maxConcurrentRequests) {
-			throw new ApiError(429, `Too many concurrent requests (max ${this.config.maxConcurrentRequests}). Your request has been queued. Try again in a moment.`, 'rate_limit_exceeded', 'concurrency_limit');
+			throw new ApiError(429, `Too many concurrent requests(max ${this.config.maxConcurrentRequests}).Your request has been queued.Try again in a moment.`, 'rate_limit_exceeded', 'concurrency_limit');
 		}
 		this.activeRequests += 1;
 		try {
@@ -3698,34 +3851,34 @@ export class CopilotApiGateway implements vscode.Disposable {
 		const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copilot API - Swagger UI</title>
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-    <style>
-        body { margin: 0; background: #fafafa; }
-        .swagger-ui .topbar { display: none; }
-        .swagger-ui .info { margin: 30px 0; }
-        .swagger-ui .info .title { font-size: 2em; }
-    </style>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Copilot API - Swagger UI</title>
+	<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+	<style>
+		body { margin: 0; background: #fafafa; }
+		.swagger-ui .topbar { display: none; }
+		.swagger-ui .info { margin: 30px 0; }
+		.swagger-ui .info .title { font-size: 2em; }
+	</style>
 </head>
 <body>
-    <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-    <script>
-        window.onload = function() {
-            SwaggerUIBundle({
-                url: '/openapi.json',
-                dom_id: '#swagger-ui',
-                presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-                layout: 'BaseLayout',
-                deepLinking: true,
-                showExtensions: true,
-                showCommonExtensions: true
-            });
-        };
-    </script>
+	<div id="swagger-ui"></div>
+	<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+	<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+	<script>
+		window.onload = function() {
+			SwaggerUIBundle({
+				url: '/openapi.json',
+				dom_id: '#swagger-ui',
+				presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+				layout: 'BaseLayout',
+				deepLinking: true,
+				showExtensions: true,
+				showCommonExtensions: true
+			});
+		};
+	</script>
 </body>
 </html>`;
 		res.statusCode = 200;
