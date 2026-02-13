@@ -102,6 +102,8 @@ export interface AnthropicMessageRequest {
 	temperature?: number;
 	top_p?: number;
 	top_k?: number;
+	thinking?: { type: 'enabled' | 'disabled' | 'adaptive'; budget_tokens?: number };
+	metadata?: { user_id?: string };
 }
 
 export interface AnthropicMessageResponse {
@@ -110,9 +112,9 @@ export interface AnthropicMessageResponse {
 	role: 'assistant';
 	content: { type: 'text'; text: string }[];
 	model: string;
-	stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence';
+	stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use';
 	stop_sequence: string | null;
-	usage: { input_tokens: number; output_tokens: number };
+	usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
 }
 
 // --- Google Generative AI Interfaces ---
@@ -125,7 +127,12 @@ export interface GoogleGenerateContentRequest {
 		temperature?: number;
 		topP?: number;
 		topK?: number;
+		frequencyPenalty?: number;
+		presencePenalty?: number;
+		responseMimeType?: string;
+		responseSchema?: any;
 	};
+	safetySettings?: { category: string; threshold: string }[];
 }
 
 export interface GoogleGenerateContentResponse {
@@ -189,6 +196,9 @@ export interface ResponsesApiRequest {
 	previous_response_id?: string;
 	store?: boolean;
 	reasoning?: { effort?: 'low' | 'medium' | 'high' };
+	text?: { format?: { type: 'text' | 'json_object' | 'json_schema'; json_schema?: any } };
+	truncation?: 'auto' | 'disabled';
+	include?: string[];
 }
 
 export interface ResponsesApiResponse {
@@ -1621,6 +1631,18 @@ export class CopilotApiGateway implements vscode.Disposable {
 
 		if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
 			const body = await this.readJsonBody(req);
+			// Normalize max_completion_tokens → max_tokens (OpenAI GPT-5.x deprecation)
+			if (body?.max_completion_tokens && !body?.max_tokens) {
+				body.max_tokens = body.max_completion_tokens;
+			}
+			// Normalize 'developer' role → 'system' (OpenAI 2025+ change)
+			if (body?.messages && Array.isArray(body.messages)) {
+				for (const msg of body.messages) {
+					if (msg.role === 'developer') {
+						msg.role = 'system';
+					}
+				}
+			}
 			if (body?.stream === true) {
 				await this.processStreamingChatCompletion(body, req, res, requestId, requestStart);
 			} else {
@@ -1799,6 +1821,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 			// Handle max_completion_tokens (Llama) as max_tokens (OpenAI)
 			if (body?.max_completion_tokens && !body?.max_tokens) {
 				body.max_tokens = body.max_completion_tokens;
+			}
+			// Normalize 'developer' role → 'system' (OpenAI 2025+ change)
+			if (body?.messages && Array.isArray(body.messages)) {
+				for (const msg of body.messages) {
+					if (msg.role === 'developer') {
+						msg.role = 'system';
+					}
+				}
 			}
 
 			if (body?.stream === true) {
@@ -2295,6 +2325,34 @@ export class CopilotApiGateway implements vscode.Disposable {
 				}]
 			};
 			res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+
+			// Emit usage chunk if stream_options.include_usage is requested
+			if (payload?.stream_options?.include_usage) {
+				let tokensIn = 0;
+				let tokensOut = 0;
+				try {
+					const inputString = lmMessages.map(m => {
+						// @ts-ignore
+						return typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+					}).join('\n');
+					tokensIn = await lmModel.countTokens(inputString, new vscode.CancellationTokenSource().token);
+					tokensOut = await lmModel.countTokens(totalContent, new vscode.CancellationTokenSource().token);
+				} catch (_) { /* best effort */ }
+				const usageChunk = {
+					id: requestId,
+					object: 'chat.completion.chunk',
+					created,
+					model,
+					choices: [],
+					usage: {
+						prompt_tokens: tokensIn,
+						completion_tokens: tokensOut,
+						total_tokens: tokensIn + tokensOut
+					}
+				};
+				res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
+			}
+
 			res.write('data: [DONE]\n\n');
 			res.end();
 
@@ -2487,14 +2545,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 			store: payload.store ?? true,
 			temperature: payload.temperature ?? 1.0,
 			text: {
-				format: {
+				format: payload.text?.format ?? {
 					type: 'text'
 				}
 			},
 			tool_choice: payload.tool_choice ?? 'auto',
 			tools: payload.tools ?? [],
 			top_p: payload.top_p ?? 1.0,
-			truncation: 'disabled',
+			truncation: payload.truncation ?? 'disabled',
 			usage: {
 				input_tokens: inputTokens,
 				input_tokens_details: {

@@ -5,8 +5,8 @@
 <h1 align="center">GitHub Copilot API Gateway</h1>
 
 <p align="center">
-  <strong>Use GitHub Copilot like any other AI API.</strong><br>
-  One VS Code extension. Zero API keys. Works with LangChain, Cursor, Aider, and 50+ tools.
+  <strong>Use GitHub Copilot like any other AI API — completely free & open-source.</strong><br>
+  One VS Code extension. Zero API keys. 100% transparent. Works with LangChain, Cursor, Aider, and 50+ tools.
 </p>
 
 <p align="center">
@@ -66,6 +66,8 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hello!"}]
 )
 ```
+
+> 🔒 **Your data stays local.** This extension runs entirely on your machine — no third-party servers, no telemetry, no data collection. The full source code is available on [GitHub](https://github.com/suhaibbinyounis/github-copilot-api-vscode) for you to audit.
 
 ---
 
@@ -174,11 +176,17 @@ For advanced options (TLS, IP allowlisting, audit logging), see [CONTRIBUTING.md
 
 ---
 
-## 📝 License
+## 🛡️ Trust & Transparency
 
-**MIT License** — See [LICENSE](LICENSE) for details.
+This project is **100% free and open-source** under the [MIT License](LICENSE).
 
-> **Disclaimer:** This extension is an independent project and is not affiliated with GitHub, Microsoft, or OpenAI. It leverages your existing GitHub Copilot subscription. Use responsibly.
+- 🔍 **Full source code** available on [GitHub](https://github.com/suhaibbinyounis/github-copilot-api-vscode)
+- 🚫 **No telemetry** — zero data collection, no analytics, no tracking
+- 🔒 **Runs locally** — your prompts and API keys never leave your machine
+- ✅ **Community-driven** — contributions welcome via [CONTRIBUTING.md](CONTRIBUTING.md)
+- 🛡️ **Security** — report vulnerabilities via [SECURITY.md](SECURITY.md)
+
+> **Disclaimer:** This extension is an independent, community-built project and is not affiliated with GitHub, Microsoft, or OpenAI. It leverages your existing GitHub Copilot subscription. Use responsibly.
 
 <p align="center">
   <strong>Built with ❤️ by <a href="https://suhaibbinyounis.com">Suhaib Bin Younis</a></strong>

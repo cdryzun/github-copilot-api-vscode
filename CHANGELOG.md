@@ -4,6 +4,21 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.0] - 2026-02-13
+
+### Added
+- **OpenAI Chat Completions:** `max_completion_tokens` parameter support (auto-normalized to `max_tokens` for GPT-5.x compatibility)
+- **OpenAI Chat Completions:** `developer` role support (auto-mapped to `system` for 2025+ spec)
+- **OpenAI Chat Completions:** `stream_options.include_usage` — emit usage chunk in streaming responses
+- **OpenAI Responses API:** `text.format` structured output pass-through (was hardcoded to `text`)
+- **OpenAI Responses API:** `truncation` parameter pass-through
+- **Anthropic Messages API:** `thinking`, `metadata` interface fields; `tool_use` stop reason; cache token usage
+- **Google Generative AI:** `frequencyPenalty`, `presencePenalty`, `responseMimeType`, `responseSchema`, `safetySettings` interface
+
+### Changed
+- Updated branding to emphasize free, open-source, and trustworthy nature
+- Upgraded TypeScript to 5.9.3, typescript-eslint to 8.55.0, @types/node to 25.2.3
+
 ## [2.5.1] - 2026-02-07
 
 ### Fixed

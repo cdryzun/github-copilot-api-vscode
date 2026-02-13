@@ -52632,6 +52632,16 @@ var CopilotApiGateway = class {
     }
     if (req.method === "POST" && url2.pathname === "/v1/chat/completions") {
       const body = await this.readJsonBody(req);
+      if (body?.max_completion_tokens && !body?.max_tokens) {
+        body.max_tokens = body.max_completion_tokens;
+      }
+      if (body?.messages && Array.isArray(body.messages)) {
+        for (const msg of body.messages) {
+          if (msg.role === "developer") {
+            msg.role = "system";
+          }
+        }
+      }
       if (body?.stream === true) {
         await this.processStreamingChatCompletion(body, req, res, requestId, requestStart);
       } else {
@@ -52786,6 +52796,13 @@ var CopilotApiGateway = class {
       const body = await this.readJsonBody(req);
       if (body?.max_completion_tokens && !body?.max_tokens) {
         body.max_tokens = body.max_completion_tokens;
+      }
+      if (body?.messages && Array.isArray(body.messages)) {
+        for (const msg of body.messages) {
+          if (msg.role === "developer") {
+            msg.role = "system";
+          }
+        }
       }
       if (body?.stream === true) {
         await this.processStreamingChatCompletion(body, req, res, requestId, requestStart);
@@ -53242,6 +53259,33 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       res.write(`data: ${JSON.stringify(finalChunk)}
 
 `);
+      if (payload?.stream_options?.include_usage) {
+        let tokensIn2 = 0;
+        let tokensOut2 = 0;
+        try {
+          const inputString = lmMessages.map((m) => {
+            return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+          }).join("\n");
+          tokensIn2 = await lmModel.countTokens(inputString, new vscode4.CancellationTokenSource().token);
+          tokensOut2 = await lmModel.countTokens(totalContent, new vscode4.CancellationTokenSource().token);
+        } catch (_) {
+        }
+        const usageChunk = {
+          id: requestId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [],
+          usage: {
+            prompt_tokens: tokensIn2,
+            completion_tokens: tokensOut2,
+            total_tokens: tokensIn2 + tokensOut2
+          }
+        };
+        res.write(`data: ${JSON.stringify(usageChunk)}
+
+`);
+      }
       res.write("data: [DONE]\n\n");
       res.end();
       let tokensIn = 0;
@@ -53400,14 +53444,14 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       store: payload.store ?? true,
       temperature: payload.temperature ?? 1,
       text: {
-        format: {
+        format: payload.text?.format ?? {
           type: "text"
         }
       },
       tool_choice: payload.tool_choice ?? "auto",
       tools: payload.tools ?? [],
       top_p: payload.top_p ?? 1,
-      truncation: "disabled",
+      truncation: payload.truncation ?? "disabled",
       usage: {
         input_tokens: inputTokens,
         input_tokens_details: {
