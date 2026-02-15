@@ -9,6 +9,7 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     private static currentPanel: vscode.WebviewPanel | undefined;
     // Track previous state to prevent unnecessary re-renders
     private _lastRunningState: boolean | undefined;
+    private _lastTunnelState: boolean | undefined;
     private static panelDisposables: vscode.Disposable[] = [];
 
     private _gateway: CopilotApiGateway | undefined;
@@ -81,6 +82,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 case 'editSystemPrompt':
                     void vscode.commands.executeCommand('github-copilot-api-vscode.editSystemPrompt');
                     break;
+                case 'switchModel':
+                    void vscode.commands.executeCommand('github-copilot-api-vscode.showServerControls');
+                    break;
                 default:
                     CopilotPanel.handleMessage(data, this._gateway);
             }
@@ -91,9 +95,10 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         gateway.onDidChangeStatus(async () => {
             const status = await gateway.getStatus();
 
-            // Check if critical state changed (Running vs Stopped)
+            // Check if critical state changed (Running vs Stopped, or Tunnel state)
             // If just stats changed, send data update message instead of re-rendering HTML
-            if (this._lastRunningState === status.running) {
+            const tunnelRunning = status.tunnel?.running ?? false;
+            if (this._lastRunningState === status.running && this._lastTunnelState === tunnelRunning) {
                 // State is stable, just update stats/UI via message
                 const activeConnections = gateway.getServerStatus().activeConnections;
                 if (this._view) {
@@ -108,8 +113,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Critical state change (Start/Stop) - Re-render HTML
+            // Critical state change (Start/Stop or Tunnel change) - Re-render HTML
             this._lastRunningState = status.running;
+            this._lastTunnelState = tunnelRunning;
 
             if (this._view) {
                 this._view.webview.html = await this._getSidebarHtml(this._view.webview);
@@ -246,9 +252,9 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
         const lifetime = await auditService.getLifetimeStats();
         const today = await auditService.getTodayStats();
 
-        // GPT-4o Pricing (approximate)
-        const PRICE_IN = 2.50 / 1000000;
-        const PRICE_OUT = 10.00 / 1000000;
+        // GPT-4.1 Pricing (approximate, as of 2025)
+        const PRICE_IN = 2.00 / 1000000;
+        const PRICE_OUT = 8.00 / 1000000;
 
         const savedTotal = (lifetime.totalTokensIn * PRICE_IN) + (lifetime.totalTokensOut * PRICE_OUT);
         const savedToday = (today.tokensIn * PRICE_IN) + (today.tokensOut * PRICE_OUT);
@@ -776,8 +782,11 @@ for await (const chunk of stream) {
         const url = `${protocol}://${displayHost}:${status.config.port}`;
 
         // Get stats for charts
-        const stats = status.stats || { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0, requestsPerMinute: 0, avgLatencyMs: 0 };
+        const stats = status.stats || { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0, requestsPerMinute: 0, avgLatencyMs: 0, uptimeMs: 0, startTime: Date.now() };
         const realtimeStats = status.realtimeStats || { requestsPerMinute: 0, avgLatencyMs: 0, errorRate: 0 };
+
+        // Get recent history for live feed
+        const recentHistory = this._gateway.getHistory(5);
 
         // Get daily stats for mini chart (last 7 days)
         const dailyStats = await this._gateway.getDailyStats(7);
@@ -800,6 +809,30 @@ for await (const chunk of stream) {
             `;
         }).join('');
 
+        // Config toggles state
+        const hasAuth = !!status.config.apiKey;
+        const isHttps = status.isHttps;
+
+        // Format uptime
+        const uptimeMs = stats.uptimeMs || 0;
+        const startTime = stats.startTime || Date.now();
+
+        // Recent history HTML
+        const feedHtml = recentHistory.map(entry => {
+            const time = new Date(entry.timestamp).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const methodColor = entry.method === 'POST' ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)';
+            const statusClass = (entry.status && entry.status < 400) ? 'success' : 'error';
+            const statusColor2 = statusClass === 'success' ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
+            const path = entry.path?.length > 22 ? '…' + entry.path.slice(-20) : (entry.path || '/');
+            return `<div class="feed-item">
+                <span class="feed-time">${time}</span>
+                <span class="feed-method" style="color:${methodColor}">${entry.method || 'POST'}</span>
+                <span class="feed-path">${path}</span>
+                <span class="feed-status" style="color:${statusColor2}">${entry.status || '—'}</span>
+                <span class="feed-latency">${entry.durationMs || 0}ms</span>
+            </div>`;
+        }).join('');
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -810,28 +843,58 @@ for await (const chunk of stream) {
         body { margin: 0; padding: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-sideBar-background); }
         .section { padding: 12px; border-bottom: 1px solid var(--vscode-widget-border); }
         .section:last-child { border-bottom: none; }
-        .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin-bottom: 10px; font-weight: 600; }
-        .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 6px ${statusColor}; }
+        .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 6px ${statusColor}; transition: all 0.3s ease; }
+        ${isRunning ? '.dot { animation: pulse-dot 2s ease-in-out infinite; }' : ''}
+        @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 6px ${statusColor}; } 50% { box-shadow: 0 0 14px ${statusColor}, 0 0 20px ${statusColor}; } }
         .url { font-family: var(--vscode-editor-font-family); font-size: 10px; opacity: 0.7; word-break: break-all; }
+        .uptime { font-size: 10px; opacity: 0.6; margin-top: 4px; font-family: var(--vscode-editor-font-family); }
+        .model-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+        .model-label { font-size: 10px; opacity: 0.6; }
+        .model-name { font-size: 11px; font-weight: 600; color: var(--vscode-textLink-foreground); cursor: pointer; }
+        .model-name:hover { text-decoration: underline; }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-        .stat-card { background: var(--vscode-editor-background); border-radius: 6px; padding: 8px 10px; text-align: center; border: 1px solid var(--vscode-widget-border); }
+        .stat-card { background: var(--vscode-editor-background); border-radius: 6px; padding: 8px 10px; text-align: center; border: 1px solid var(--vscode-widget-border); transition: border-color 0.15s ease; }
+        .stat-card:hover { border-color: var(--vscode-focusBorder); }
         .stat-value { font-size: 18px; font-weight: 700; color: var(--vscode-foreground); }
         .stat-label { font-size: 9px; text-transform: uppercase; opacity: 0.6; margin-top: 2px; }
         .chart-container { background: var(--vscode-editor-background); border-radius: 8px; padding: 12px; border: 1px solid var(--vscode-widget-border); }
         .chart-title { font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.9; }
-        button { width: 100%; padding: 8px 12px; margin-bottom: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-family: var(--vscode-font-family); font-weight: 500; font-size: 12px; }
-        button:hover { background: var(--vscode-button-hoverBackground); }
+        button { width: 100%; padding: 8px 12px; margin-bottom: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-family: var(--vscode-font-family); font-weight: 500; font-size: 12px; transition: all 0.15s ease; }
+        button:hover { background: var(--vscode-button-hoverBackground); transform: translateY(-1px); }
+        button:active { transform: scale(0.98); }
         button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
         button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
         .btn-row { display: flex; gap: 6px; margin-bottom: 6px; }
         .btn-row button { flex: 1; padding: 6px 8px; font-size: 11px; margin-bottom: 0; }
         .copilot-status { font-size: 10px; opacity: 0.7; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
         .copilot-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+        /* Live Feed */
+        .feed-container { background: var(--vscode-editor-background); border-radius: 6px; border: 1px solid var(--vscode-widget-border); overflow: hidden; }
+        .feed-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; font-family: var(--vscode-editor-font-family); border-bottom: 1px solid var(--vscode-widget-border); transition: background 0.1s ease; }
+        .feed-item:last-child { border-bottom: none; }
+        .feed-item:hover { background: var(--vscode-list-hoverBackground); }
+        .feed-item.new { animation: feed-flash 0.5s ease; }
+        @keyframes feed-flash { from { background: var(--vscode-editor-selectionBackground); } to { background: transparent; } }
+        .feed-time { opacity: 0.5; min-width: 52px; }
+        .feed-method { font-weight: 700; min-width: 30px; }
+        .feed-path { flex: 1; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .feed-status { font-weight: 600; min-width: 24px; text-align: right; }
+        .feed-latency { opacity: 0.5; min-width: 36px; text-align: right; }
+        .feed-empty { padding: 12px; text-align: center; font-size: 11px; opacity: 0.5; }
+
+        /* Config Toggles */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+        .toggle-label { font-size: 11px; display: flex; align-items: center; gap: 6px; }
+        .toggle-indicator { width: 8px; height: 8px; border-radius: 50%; }
+        .toggle-on { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 4px var(--vscode-testing-iconPassed); }
+        .toggle-off { background: var(--vscode-descriptionForeground); opacity: 0.4; }
     </style>
 </head>
 <body>
-    <!-- Status Section (at top) -->
+    <!-- Status Section -->
     <div class="section">
         <div class="section-title">Server Status</div>
         <div class="status-row">
@@ -839,6 +902,11 @@ for await (const chunk of stream) {
             <strong>${statusText}</strong>
         </div>
         <div class="url">${url}</div>
+        <div class="model-row">
+            <span class="model-label">Model:</span>
+            <span class="model-name" id="model-name" title="Click to switch model">${status.config.defaultModel || 'gpt-4o'}</span>
+        </div>
+        ${isRunning ? `<div class="uptime" id="uptime-display">⏱ Uptime: calculating...</div>` : ''}
         <div class="copilot-status">
             <div class="copilot-dot" style="background: ${status.copilot.ready ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editorWarning-foreground)'}"></div>
             Copilot: ${status.copilot.ready ? 'Ready' : (status.copilot.signedIn ? 'Checking' : 'Sign-in Needed')}
@@ -855,21 +923,15 @@ for await (const chunk of stream) {
         </div>
     </div>
 
-    <!-- Actions Section -->
+    <!-- Primary Actions -->
     <div class="section">
         <div class="section-title">⚡ Actions</div>
-        <div class="actions">
-            <button id="btn-toggle" class="secondary">${isRunning ? '⏹ Stop Server' : '▶ Start Server'}</button>
-            <button id="btn-edit-system-prompt" class="secondary">📝 System Prompt</button>
-            <button id="btn-swagger" class="secondary">📝 Swagger API</button>
-            <button id="btn-wiki" class="secondary">📚 Wiki</button>
-            <button id="btn-docs" class="secondary">📚 How to Use</button>
-            <button id="btn-dashboard" class="primary">Open Dashboard ↗</button>
-            <button id="btn-notes" class="secondary">📖 Things you should read</button>
-        </div>
+        <button id="btn-toggle">${isRunning ? '⏹ Stop Server' : '▶ Start Server'}</button>
+        <button id="btn-dashboard">📊 Open Dashboard ↗</button>
+        <button id="btn-swagger" class="secondary">📝 Swagger API</button>
     </div>
 
-    <!-- Analytics Section -->
+    <!-- Live Stats Section -->
     <div class="section">
         <div class="section-title">📊 Live Stats</div>
         <div class="stats-grid">
@@ -881,6 +943,14 @@ for await (const chunk of stream) {
                 <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 10px; opacity: 0.6;">ms</span></div>
                 <div class="stat-label">Latency</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total" style="font-size: 14px;">${this.formatNumber(stats.totalRequests)}</div>
+                <div class="stat-label">Total Reqs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-errors" style="font-size: 14px; color: ${(realtimeStats.errorRate || 0) > 0 ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconPassed)'};">${realtimeStats.errorRate || 0}%</div>
+                <div class="stat-label">Error Rate</div>
+            </div>
         </div>
 
         <div class="chart-container">
@@ -888,6 +958,14 @@ for await (const chunk of stream) {
             <svg width="${chartWidth}" height="${chartHeight + 16}" style="display: block; margin: 0 auto;">
                 ${barsHtml}
             </svg>
+        </div>
+    </div>
+
+    <!-- Live Request Feed -->
+    <div class="section">
+        <div class="section-title">⚡ Live Feed</div>
+        <div class="feed-container" id="feed-container">
+            ${feedHtml || '<div class="feed-empty">No requests yet</div>'}
         </div>
     </div>
 
@@ -902,7 +980,35 @@ for await (const chunk of stream) {
             <div class="stat-card">
                 <div class="stat-value" id="stat-tokens-out" style="font-size: 14px; color: var(--vscode-charts-orange);">${this.formatNumber(stats.totalTokensOut)}</div>
                 <div class="stat-label">Tokens Out</div>
+            </div>
         </div>
+    </div>
+
+    <!-- Config Status -->
+    <div class="section">
+        <div class="section-title">🔧 Config</div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${hasAuth ? 'toggle-on' : 'toggle-off'}"></span> Authentication</span>
+            <span style="font-size: 10px; opacity: 0.6;">${hasAuth ? '🔒 On' : '🔓 Off'}</span>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${isHttps ? 'toggle-on' : 'toggle-off'}"></span> HTTPS</span>
+            <span style="font-size: 10px; opacity: 0.6;">${isHttps ? '✅ On' : 'Off'}</span>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${status.tunnel?.running ? 'toggle-on' : 'toggle-off'}"></span> Tunnel</span>
+            <span style="font-size: 10px; opacity: 0.6;">${status.tunnel?.running ? '🌐 Active' : 'Off'}</span>
+        </div>
+    </div>
+
+
+    <!-- More Actions -->
+    <div class="section">
+        <div class="section-title">More</div>
+        <button id="btn-edit-system-prompt" class="secondary">📝 System Prompt</button>
+        <button id="btn-wiki" class="secondary">📚 Wiki</button>
+        <button id="btn-docs" class="secondary">📚 How to Use</button>
+        <button id="btn-notes" class="secondary">📖 Things you should read</button>
     </div>
 
     <!-- GitHub Star Section -->
@@ -928,6 +1034,8 @@ for await (const chunk of stream) {
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         const serverUrl = '${url}';
+        const serverStartTime = ${startTime};
+        const isRunning = ${isRunning};
         const curlCommand = \`curl -X POST ${url}/v1/chat/completions \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'\`;
@@ -954,6 +1062,26 @@ print(response.choices[0].message.content)\`;
             });
         }
 
+        // Uptime ticker
+        if (isRunning) {
+            const uptimeEl = document.getElementById('uptime-display');
+            function updateUptime() {
+                const elapsed = Date.now() - serverStartTime;
+                const s = Math.floor(elapsed / 1000);
+                const m = Math.floor(s / 60);
+                const h = Math.floor(m / 60);
+                const d = Math.floor(h / 24);
+                let str = '';
+                if (d > 0) str += d + 'd ';
+                if (h > 0) str += (h % 24) + 'h ';
+                str += (m % 60) + 'm ' + (s % 60) + 's';
+                if (uptimeEl) uptimeEl.textContent = '⏱ ' + str;
+            }
+            updateUptime();
+            setInterval(updateUptime, 1000);
+        }
+
+        // Button handlers
         document.getElementById('btn-copy-url').addEventListener('click', (e) => copyWithFeedback(e.target, serverUrl));
         document.getElementById('btn-copy-curl').addEventListener('click', (e) => copyWithFeedback(e.target, curlCommand));
         document.getElementById('btn-copy-python').addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
@@ -961,8 +1089,8 @@ print(response.choices[0].message.content)\`;
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' }));
         document.getElementById('btn-edit-system-prompt').addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
-        document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-wiki').addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
+        document.getElementById('model-name').addEventListener('click', () => vscode.postMessage({ type: 'switchModel' }));
         const btnDocs = document.getElementById('btn-docs');
         if (btnDocs) {
             btnDocs.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' }));
@@ -970,6 +1098,68 @@ print(response.choices[0].message.content)\`;
         const btnNotes = document.getElementById('btn-notes');
         if (btnNotes) {
             btnNotes.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in' }));
+        }
+
+        // Live feed management
+        const feedContainer = document.getElementById('feed-container');
+        const MAX_FEED_ITEMS = 5;
+
+        function addFeedItem(log) {
+            // Remove empty message if present
+            const empty = feedContainer.querySelector('.feed-empty');
+            if (empty) empty.remove();
+
+            const time = new Date(log.timestamp || Date.now()).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const methodColor = log.method === 'POST' ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)';
+            const statusOk = log.status && log.status < 400;
+            const statusColor = statusOk ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
+            const path = (log.path || '/').length > 22 ? '…' + (log.path || '/').slice(-20) : (log.path || '/');
+
+            const item = document.createElement('div');
+            item.className = 'feed-item new';
+            item.innerHTML = \`
+                <span class="feed-time">\${time}</span>
+                <span class="feed-method" style="color:\${methodColor}">\${log.method || 'POST'}</span>
+                <span class="feed-path">\${path}</span>
+                <span class="feed-status" style="color:\${statusColor}">\${log.status || '…'}</span>
+                <span class="feed-latency">\${log.latencyMs || 0}ms</span>
+            \`;
+
+            feedContainer.insertBefore(item, feedContainer.firstChild);
+
+            // Trim to max items
+            while (feedContainer.children.length > MAX_FEED_ITEMS) {
+                feedContainer.removeChild(feedContainer.lastChild);
+            }
+
+            // Remove animation class after it plays
+            setTimeout(() => item.classList.remove('new'), 500);
+        }
+
+        function updatePendingFeed(startLog) {
+            const empty = feedContainer.querySelector('.feed-empty');
+            if (empty) empty.remove();
+
+            const time = new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const methodColor = startLog.method === 'POST' ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)';
+            const path = (startLog.path || '/').length > 22 ? '…' + (startLog.path || '/').slice(-20) : (startLog.path || '/');
+
+            const item = document.createElement('div');
+            item.className = 'feed-item new';
+            item.setAttribute('data-request-id', startLog.requestId || '');
+            item.innerHTML = \`
+                <span class="feed-time">\${time}</span>
+                <span class="feed-method" style="color:\${methodColor}">\${startLog.method || 'POST'}</span>
+                <span class="feed-path">\${path}</span>
+                <span class="feed-status" style="opacity:0.4">…</span>
+                <span class="feed-latency" style="opacity:0.4">—</span>
+            \`;
+
+            feedContainer.insertBefore(item, feedContainer.firstChild);
+            while (feedContainer.children.length > MAX_FEED_ITEMS) {
+                feedContainer.removeChild(feedContainer.lastChild);
+            }
+            setTimeout(() => item.classList.remove('new'), 500);
         }
 
         // Listen for real-time stats updates from extension
@@ -985,15 +1175,28 @@ print(response.choices[0].message.content)\`;
                 const stats = message.data;
                 const rpmEl = document.getElementById('stat-rpm');
                 const latencyEl = document.getElementById('stat-latency');
+                const errEl = document.getElementById('stat-errors');
                 if (rpmEl) rpmEl.textContent = stats.requestsPerMinute;
                 if (latencyEl) latencyEl.innerHTML = stats.avgLatencyMs + '<span style="font-size: 10px; opacity: 0.6;">ms</span>';
+                if (errEl) {
+                    errEl.textContent = (stats.errorRate || 0) + '%';
+                    errEl.style.color = (stats.errorRate || 0) > 0 ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconPassed)';
+                }
             }
             if (message.type === 'statsData' && message.data) {
                 const stats = message.data;
                 const tokensInEl = document.getElementById('stat-tokens-in');
                 const tokensOutEl = document.getElementById('stat-tokens-out');
+                const totalEl = document.getElementById('stat-total');
                 if (tokensInEl) tokensInEl.textContent = formatNumber(stats.totalTokensIn);
                 if (tokensOutEl) tokensOutEl.textContent = formatNumber(stats.totalTokensOut);
+                if (totalEl) totalEl.textContent = formatNumber(stats.totalRequests);
+            }
+            if (message.type === 'liveLog' && message.value) {
+                addFeedItem(message.value);
+            }
+            if (message.type === 'liveLogStart' && message.value) {
+                updatePendingFeed(message.value);
             }
         });
     </script>
@@ -1032,9 +1235,9 @@ print(response.choices[0].message.content)\`;
         const lifetimeStats = await auditService.getLifetimeStats();
         const todayStats = await auditService.getTodayStats();
 
-        // GPT-4o Pricing (approximate)
-        const PRICE_IN = 2.50 / 1000000;
-        const PRICE_OUT = 10.00 / 1000000;
+        // GPT-4.1 Pricing (approximate, as of 2025)
+        const PRICE_IN = 2.00 / 1000000;
+        const PRICE_OUT = 8.00 / 1000000;
 
         const savedTotal = (lifetimeStats.totalTokensIn * PRICE_IN) + (lifetimeStats.totalTokensOut * PRICE_OUT);
         const savedToday = (todayStats.tokensIn * PRICE_IN) + (todayStats.tokensOut * PRICE_OUT);
@@ -1482,7 +1685,7 @@ print(response.choices[0].message.content)\`;
                 <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">💸 Est. Savings</h3>
                 <div style="font-size: 28px; font-weight: 600; color: var(--vscode-testing-iconPassed);">${formatMoney(savedTotal)}</div>
                 <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">+${formatMoney(savedToday)} today</div>
-                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4o pricing</div>
+                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4.1 pricing</div>
             </div>
             <div class="card">
                 <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">📊 Traffic</h3>

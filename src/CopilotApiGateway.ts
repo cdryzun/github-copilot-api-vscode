@@ -195,7 +195,7 @@ export interface ResponsesApiRequest {
 	metadata?: Record<string, string>;
 	previous_response_id?: string;
 	store?: boolean;
-	reasoning?: { effort?: 'low' | 'medium' | 'high' };
+	reasoning?: { effort?: 'low' | 'medium' | 'high' | 'minimal' | 'none' | 'xhigh' };
 	text?: { format?: { type: 'text' | 'json_object' | 'json_schema'; json_schema?: any } };
 	truncation?: 'auto' | 'disabled';
 	include?: string[];
@@ -222,7 +222,7 @@ export interface ResponsesApiResponse {
 	parallel_tool_calls: boolean;
 	previous_response_id: string | null;
 	reasoning: {
-		effort: 'low' | 'medium' | 'high' | null;
+		effort: 'low' | 'medium' | 'high' | 'minimal' | 'none' | 'xhigh' | null;
 		summary: string | null;
 	};
 	store: boolean;
@@ -1635,6 +1635,11 @@ export class CopilotApiGateway implements vscode.Disposable {
 			if (body?.max_completion_tokens && !body?.max_tokens) {
 				body.max_tokens = body.max_completion_tokens;
 			}
+			// Normalize reasoning_effort → top-level for o-series models (Dec 2024)
+			// Preserve it in the payload so processChatCompletion can forward it
+			if (body?.reasoning_effort && !body?.reasoning) {
+				body.reasoning = { effort: body.reasoning_effort };
+			}
 			// Normalize 'developer' role → 'system' (OpenAI 2025+ change)
 			if (body?.messages && Array.isArray(body.messages)) {
 				for (const msg of body.messages) {
@@ -1821,6 +1826,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 			// Handle max_completion_tokens (Llama) as max_tokens (OpenAI)
 			if (body?.max_completion_tokens && !body?.max_tokens) {
 				body.max_tokens = body.max_completion_tokens;
+			}
+			// Normalize reasoning_effort → top-level for o-series models (Dec 2024)
+			if (body?.reasoning_effort && !body?.reasoning) {
+				body.reasoning = { effort: body.reasoning_effort };
 			}
 			// Normalize 'developer' role → 'system' (OpenAI 2025+ change)
 			if (body?.messages && Array.isArray(body.messages)) {
@@ -2678,14 +2687,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 					store: payload.store ?? true,
 					temperature: payload.temperature ?? 1.0,
 					text: {
-						format: {
+						format: payload.text?.format ?? {
 							type: 'text'
 						}
 					},
 					tool_choice: payload.tool_choice ?? 'auto',
 					tools: payload.tools ?? [],
 					top_p: payload.top_p ?? 1.0,
-					truncation: 'disabled',
+					truncation: payload.truncation ?? 'disabled',
 					usage: null,
 					user: null,
 					metadata: payload.metadata ?? {}
@@ -2790,14 +2799,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 						store: payload.store ?? true,
 						temperature: payload.temperature ?? 1.0,
 						text: {
-							format: {
+							format: payload.text?.format ?? {
 								type: 'text'
 							}
 						},
 						tool_choice: payload.tool_choice ?? 'auto',
 						tools: payload.tools ?? [],
 						top_p: payload.top_p ?? 1.0,
-						truncation: 'disabled',
+						truncation: payload.truncation ?? 'disabled',
 						usage: {
 							input_tokens: inputTokens,
 							input_tokens_details: {
@@ -4507,6 +4516,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 							stream: { type: 'boolean', default: false, description: 'Enable streaming responses' },
 							temperature: { type: 'number', minimum: 0, maximum: 2, description: 'Sampling temperature' },
 							max_tokens: { type: 'integer', description: 'Maximum tokens to generate' },
+							max_completion_tokens: { type: 'integer', description: 'Maximum completion tokens (GPT-5.x style, auto-normalized to max_tokens)' },
+							reasoning_effort: { type: 'string', enum: ['low', 'medium', 'high', 'minimal', 'none', 'xhigh'], description: 'Reasoning effort for o-series models' },
 							tools: {
 								type: 'array',
 								items: { $ref: '#/components/schemas/Tool' },
@@ -4524,7 +4535,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 						type: 'object',
 						required: ['role', 'content'],
 						properties: {
-							role: { type: 'string', enum: ['system', 'user', 'assistant', 'tool'], description: 'Role of the message sender' },
+							role: { type: 'string', enum: ['system', 'developer', 'user', 'assistant', 'tool'], description: 'Role of the message sender (developer is auto-normalized to system)' },
 							content: { type: 'string', description: 'Message content' },
 							name: { type: 'string', description: 'Name of the sender (optional)' },
 							tool_calls: { type: 'array', items: { $ref: '#/components/schemas/ToolCall' } },
@@ -4640,7 +4651,16 @@ export class CopilotApiGateway implements vscode.Disposable {
 							top_p: { type: 'number', minimum: 0, maximum: 1, description: 'Nucleus sampling parameter' },
 							max_output_tokens: { type: 'integer', description: 'Maximum tokens to generate' },
 							tools: { type: 'array', items: { type: 'object' }, description: 'Tool definitions for function calling' },
-							metadata: { type: 'object', description: 'Custom metadata key-value pairs' }
+							tool_choice: { type: 'string', description: 'How to select tools: auto, none, or specific' },
+							metadata: { type: 'object', description: 'Custom metadata key-value pairs' },
+							reasoning: {
+								type: 'object',
+								properties: { effort: { type: 'string', enum: ['low', 'medium', 'high', 'minimal', 'none', 'xhigh'] } },
+								description: 'Reasoning configuration for o-series models'
+							},
+							truncation: { type: 'string', enum: ['auto', 'disabled'], description: 'Context truncation strategy', default: 'disabled' },
+							store: { type: 'boolean', description: 'Whether to store the response', default: true },
+							previous_response_id: { type: 'string', description: 'ID of previous response for multi-turn conversations' }
 						}
 					},
 					ResponsesResponse: {

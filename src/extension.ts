@@ -20,7 +20,14 @@ export function activate(context: vscode.ExtensionContext) {
 	const updateStatusBar = async () => {
 		if (!gateway) {
 			statusItem.text = '$(circle-slash) Copilot API: OFF';
-			statusItem.tooltip = 'Copilot API Gateway is stopped (Standby Mode)';
+			statusItem.tooltip = new vscode.MarkdownString(`
+**$(circle-slash) Copilot API Gateway**
+
+Server is stopped. Click to start or manage.
+
+*Tip: Enable auto-start in settings for convenience*
+			`);
+			statusItem.tooltip.isTrusted = true;
 			statusItem.backgroundColor = undefined;
 			statusItem.show();
 			return;
@@ -31,24 +38,37 @@ export function activate(context: vscode.ExtensionContext) {
 			const rpm = status.stats.requestsPerMinute;
 			const latency = status.stats.avgLatencyMs;
 			const errorRate = status.stats.errorRate || 0;
-			let text = `$(broadcast) Copilot API: ON`;
+			const totalReqs = status.stats.totalRequests;
+			const uptimeMs = status.stats.uptimeMs || 0;
+			const tunnelActive = status.tunnel?.running ?? false;
 
-			// Add RPM and Latency if there is activity
-			if (rpm > 0 || status.activeRequests > 0) {
-				text += `  $(graph) ${rpm} RPM`;
-			}
-			if (latency > 0) {
-				text += `  $(pulse) ${latency}ms`;
-			}
-			// Show error indicator if error rate is notable
-			if (errorRate >= 5) {
-				text += `  $(warning) ${errorRate}%`;
-			}
+			// Format uptime as "Xh Ym" or "Xm Ys"
+			const uptimeSec = Math.floor(uptimeMs / 1000);
+			const uptimeMin = Math.floor(uptimeSec / 60);
+			const uptimeHrs = Math.floor(uptimeMin / 60);
+			const uptimeStr = uptimeHrs > 0
+				? `${uptimeHrs}h ${uptimeMin % 60}m`
+				: uptimeMin > 0
+					? `${uptimeMin}m ${uptimeSec % 60}s`
+					: `${uptimeSec}s`;
 
 			if (status.activeRequests > 0) {
 				statusItem.text = `$(sync~spin) Processing (${status.activeRequests}) | ${rpm} RPM`;
 				statusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 			} else {
+				let text = `$(broadcast) Copilot API`;
+				if (rpm > 0) {
+					text += `  $(graph) ${rpm}`;
+				}
+				if (latency > 0) {
+					text += `  $(pulse) ${latency}ms`;
+				}
+				if (errorRate >= 5) {
+					text += `  $(warning) ${errorRate}%`;
+				}
+				if (tunnelActive) {
+					text += `  $(globe)`;
+				}
 				statusItem.text = text;
 				statusItem.backgroundColor = undefined;
 			}
@@ -65,12 +85,15 @@ export function activate(context: vscode.ExtensionContext) {
 | Metric | Value |
 |--------|-------|
 | Status | 🟢 Active |
+| Default Model | \`${status.config.defaultModel}\` |
 | Endpoint | \`${url}\` |
+| Uptime | ${uptimeStr} |
+| Total Requests | ${totalReqs.toLocaleString()} |
 | Requests/min | ${rpm} |
 | Avg Latency | ${latency}ms |
 | Error Rate | ${errorRate}% |
-| Total Requests | ${status.stats.totalRequests.toLocaleString()} |
 | Tokens In/Out | ${(status.stats.totalTokensIn || 0).toLocaleString()} / ${(status.stats.totalTokensOut || 0).toLocaleString()} |
+| Tunnel | ${tunnelActive ? '🌐 Active' : '—'} |
 
 *Click to open controls*
 			`);
@@ -85,6 +108,7 @@ Server is stopped. Click to start or manage.
 
 *Tip: Enable auto-start in settings for convenience*
 			`);
+			statusItem.tooltip.isTrusted = true;
 			statusItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 			statusItem.show();
 		}
@@ -144,12 +168,24 @@ Server is stopped. Click to start or manage.
 		const status = await gw.getStatus();
 		const items: vscode.QuickPickItem[] = [];
 
-		// status header
+		const protocol = status.isHttps ? 'https' : 'http';
+		const displayHost = (status.config.host === '0.0.0.0' && status.networkInfo?.localIPs?.length)
+			? status.networkInfo.localIPs[0]
+			: status.config.host;
+		const url = `${protocol}://${displayHost}:${status.config.port}`;
+
+		// Status header
 		if (status.running) {
+			const uptimeMs = status.stats.uptimeMs || 0;
+			const uptimeSec = Math.floor(uptimeMs / 1000);
+			const uptimeMin = Math.floor(uptimeSec / 60);
+			const uptimeHrs = Math.floor(uptimeMin / 60);
+			const uptimeStr = uptimeHrs > 0 ? `${uptimeHrs}h ${uptimeMin % 60}m` : uptimeMin > 0 ? `${uptimeMin}m` : `${uptimeSec}s`;
+
 			items.push({
-				label: '$(check) Server is Running',
-				description: `http://${status.config.host}:${status.config.port}`,
-				detail: `Requests/min: ${status.stats.requestsPerMinute} | Avg Latency: ${status.stats.avgLatencyMs}ms | Errors: ${status.stats.errorRate}%`,
+				label: `$(check) Running — ${status.config.defaultModel}`,
+				description: url,
+				detail: `⏱ ${uptimeStr}  ·  📊 ${status.stats.totalRequests.toLocaleString()} reqs  ·  ${status.stats.requestsPerMinute} RPM  ·  ${status.stats.avgLatencyMs}ms avg`,
 				kind: vscode.QuickPickItemKind.Separator
 			});
 			items.push({
@@ -171,7 +207,37 @@ Server is stopped. Click to start or manage.
 			});
 		}
 
-		items.push({ label: '', kind: vscode.QuickPickItemKind.Separator }); // Spacer
+		items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+
+		// Quick actions
+		items.push({
+			label: '$(clippy) Copy API URL',
+			description: url
+		});
+
+		items.push({
+			label: '$(beaker) Quick Test',
+			description: 'Send a test "Hello" request'
+		});
+
+		items.push({
+			label: '$(symbol-enum) Switch Model',
+			description: `Current: ${status.config.defaultModel}`
+		});
+
+		items.push({
+			label: '$(edit) Edit System Prompt',
+			description: 'Open the default system prompt editor'
+		});
+
+		// Tunnel
+		const tunnelRunning = status.tunnel?.running ?? false;
+		items.push({
+			label: tunnelRunning ? '$(globe) Tunnel Active' : '$(globe) Start Tunnel',
+			description: tunnelRunning ? (status.tunnel?.url ?? 'Connected') : 'Expose API via Cloudflare'
+		});
+
+		items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
 
 		items.push({
 			label: '$(dashboard) Open Full Dashboard',
@@ -202,6 +268,66 @@ Server is stopped. Click to start or manage.
 			CopilotPanel.createOrShow(context.extensionUri, getGateway);
 		} else if (selection.label.includes('Show Logs')) {
 			output.show();
+		} else if (selection.label.includes('Copy API URL')) {
+			await vscode.env.clipboard.writeText(url);
+			void vscode.window.showInformationMessage(`Copied: ${url}`);
+		} else if (selection.label.includes('Quick Test')) {
+			if (!status.running) {
+				void vscode.window.showWarningMessage('Start the server first to run a test.');
+				return;
+			}
+			void vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Testing API...' }, async () => {
+				try {
+					const http = await import('http');
+					const postData = JSON.stringify({ model: status.config.defaultModel, messages: [{ role: 'user', content: 'Say "API is working!" in exactly 3 words.' }], max_tokens: 20 });
+					const result = await new Promise<string>((resolve, reject) => {
+						const req = http.request({ hostname: status.config.host === '0.0.0.0' ? '127.0.0.1' : status.config.host, port: status.config.port, path: '/v1/chat/completions', method: 'POST', headers: { 'Content-Type': 'application/json', ...(status.config.apiKey ? { 'Authorization': `Bearer ${status.config.apiKey}` } : {}) } }, (res) => {
+							let data = '';
+							res.on('data', (chunk: string) => data += chunk);
+							res.on('end', () => resolve(data));
+						});
+						req.on('error', reject);
+						req.write(postData);
+						req.end();
+					});
+					const parsed = JSON.parse(result);
+					const reply = parsed?.choices?.[0]?.message?.content || 'No response';
+					void vscode.window.showInformationMessage(`✅ API Test: ${reply}`);
+				} catch (e: any) {
+					void vscode.window.showErrorMessage(`❌ API Test Failed: ${e.message}`);
+				}
+			});
+		} else if (selection.label.includes('Switch Model')) {
+			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+			const modelItems = copilotModels.map(m => ({
+				label: m.id === status.config.defaultModel ? `$(check) ${m.id}` : `     ${m.id}`,
+				description: m.id === status.config.defaultModel ? '(current)' : '',
+				modelId: m.id
+			}));
+			const modelSelection = await vscode.window.showQuickPick(modelItems, { placeHolder: 'Select default model', title: 'Switch Default Model' });
+			if (modelSelection) {
+				const newModel = (modelSelection as any).modelId;
+				await gw.setDefaultModel(newModel);
+				void vscode.window.showInformationMessage(`Default model set to: ${newModel}`);
+			}
+		} else if (selection.label.includes('Edit System Prompt')) {
+			void vscode.commands.executeCommand('github-copilot-api-vscode.editSystemPrompt');
+		} else if (selection.label.includes('Start Tunnel')) {
+			const result = await gw.startTunnel();
+			if (result.success) {
+				void vscode.window.showInformationMessage(`Tunnel active at: ${result.url}`);
+			} else {
+				void vscode.window.showErrorMessage(result.error || 'Failed to start tunnel');
+			}
+		} else if (selection.label.includes('Tunnel Active')) {
+			const action = await vscode.window.showQuickPick(['Copy Tunnel URL', 'Stop Tunnel'], { placeHolder: 'Tunnel is active' });
+			if (action === 'Copy Tunnel URL' && status.tunnel?.url) {
+				await vscode.env.clipboard.writeText(status.tunnel.url);
+				void vscode.window.showInformationMessage(`Copied: ${status.tunnel.url}`);
+			} else if (action === 'Stop Tunnel') {
+				await gw.stopTunnel();
+				void vscode.window.showInformationMessage('Tunnel stopped.');
+			}
 		}
 	});
 

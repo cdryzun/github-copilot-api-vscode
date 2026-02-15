@@ -17295,20 +17295,20 @@ var require_compile = __commonJS({
     var util_1 = require_util();
     var validate_1 = require_validate();
     var SchemaEnv = class {
-      constructor(env2) {
+      constructor(env3) {
         var _a2;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env2.schema == "object")
-          schema = env2.schema;
-        this.schema = env2.schema;
-        this.schemaId = env2.schemaId;
-        this.root = env2.root || this;
-        this.baseId = (_a2 = env2.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
-        this.schemaPath = env2.schemaPath;
-        this.localRefs = env2.localRefs;
-        this.meta = env2.meta;
+        if (typeof env3.schema == "object")
+          schema = env3.schema;
+        this.schema = env3.schema;
+        this.schemaId = env3.schemaId;
+        this.root = env3.root || this;
+        this.baseId = (_a2 = env3.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env3.schemaId || "$id"]);
+        this.schemaPath = env3.schemaPath;
+        this.localRefs = env3.localRefs;
+        this.meta = env3.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -17492,15 +17492,15 @@ var require_compile = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env2;
+      let env3;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env2 = resolveSchema.call(this, root, $ref);
+        env3 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env2.schema !== env2.root.schema)
-        return env2;
+      env3 = env3 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env3.schema !== env3.root.schema)
+        return env3;
       return void 0;
     }
   }
@@ -18901,8 +18901,8 @@ var require_ref = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env2, validateName, opts, self: self2 } = it;
-        const { root } = env2;
+        const { baseId, schemaEnv: env3, validateName, opts, self: self2 } = it;
+        const { root } = env3;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
@@ -18912,8 +18912,8 @@ var require_ref = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env2 === root)
-            return callRef(cxt, validateName, env2, env2.$async);
+          if (env3 === root)
+            return callRef(cxt, validateName, env3, env3.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -18943,14 +18943,14 @@ var require_ref = __commonJS({
     exports2.getValidate = getValidate;
     function callRef(cxt, v, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env2, opts } = it;
+      const { allErrors, schemaEnv: env3, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env2.$async)
+        if (!env3.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -23906,20 +23906,20 @@ var require_compile2 = __commonJS({
     var util_1 = require_util2();
     var validate_1 = require_validate2();
     var SchemaEnv = class {
-      constructor(env2) {
+      constructor(env3) {
         var _a2;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env2.schema == "object")
-          schema = env2.schema;
-        this.schema = env2.schema;
-        this.schemaId = env2.schemaId;
-        this.root = env2.root || this;
-        this.baseId = (_a2 = env2.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
-        this.schemaPath = env2.schemaPath;
-        this.localRefs = env2.localRefs;
-        this.meta = env2.meta;
+        if (typeof env3.schema == "object")
+          schema = env3.schema;
+        this.schema = env3.schema;
+        this.schemaId = env3.schemaId;
+        this.root = env3.root || this;
+        this.baseId = (_a2 = env3.baseId) !== null && _a2 !== void 0 ? _a2 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env3.schemaId || "$id"]);
+        this.schemaPath = env3.schemaPath;
+        this.localRefs = env3.localRefs;
+        this.meta = env3.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -24103,15 +24103,15 @@ var require_compile2 = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env2;
+      let env3;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env2 = resolveSchema.call(this, root, $ref);
+        env3 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env2.schema !== env2.root.schema)
-        return env2;
+      env3 = env3 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env3.schema !== env3.root.schema)
+        return env3;
       return void 0;
     }
   }
@@ -24790,8 +24790,8 @@ var require_ref2 = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env2, validateName, opts, self: self2 } = it;
-        const { root } = env2;
+        const { baseId, schemaEnv: env3, validateName, opts, self: self2 } = it;
+        const { root } = env3;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
@@ -24801,8 +24801,8 @@ var require_ref2 = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env2 === root)
-            return callRef(cxt, validateName, env2, env2.$async);
+          if (env3 === root)
+            return callRef(cxt, validateName, env3, env3.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -24832,14 +24832,14 @@ var require_ref2 = __commonJS({
     exports2.getValidate = getValidate;
     function callRef(cxt, v, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env2, opts } = it;
+      const { allErrors, schemaEnv: env3, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env2.$async)
+        if (!env3.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -27953,7 +27953,7 @@ var require_resolveCommand = __commonJS({
     var which = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
-      const env2 = parsed.options.env || process.env;
+      const env3 = parsed.options.env || process.env;
       const cwd = process.cwd();
       const hasCustomCwd = parsed.options.cwd != null;
       const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
@@ -27966,7 +27966,7 @@ var require_resolveCommand = __commonJS({
       let resolved;
       try {
         resolved = which.sync(parsed.command, {
-          path: env2[getPathKey({ env: env2 })],
+          path: env3[getPathKey({ env: env3 })],
           pathExt: withoutPathExt ? path4.delimiter : void 0
         });
       } catch (e) {
@@ -28237,7 +28237,7 @@ var init_stdio = __esm({
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js
 function getDefaultEnvironment() {
-  const env2 = {};
+  const env3 = {};
   for (const key of DEFAULT_INHERITED_ENV_VARS) {
     const value = import_node_process.default.env[key];
     if (value === void 0) {
@@ -28246,9 +28246,9 @@ function getDefaultEnvironment() {
     if (value.startsWith("()")) {
       continue;
     }
-    env2[key] = value;
+    env3[key] = value;
   }
-  return env2;
+  return env3;
 }
 function isElectron() {
   return "type" in import_node_process.default;
@@ -32476,7 +32476,7 @@ function __classPrivateFieldIn(state, receiver) {
   if (receiver === null || typeof receiver !== "object" && typeof receiver !== "function") throw new TypeError("Cannot use 'in' operator on non-object");
   return typeof state === "function" ? receiver === state : state.has(receiver);
 }
-function __addDisposableResource(env2, value, async) {
+function __addDisposableResource(env3, value, async) {
   if (value !== null && value !== void 0) {
     if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
     var dispose, inner;
@@ -32497,22 +32497,22 @@ function __addDisposableResource(env2, value, async) {
         return Promise.reject(e);
       }
     };
-    env2.stack.push({ value, dispose, async });
+    env3.stack.push({ value, dispose, async });
   } else if (async) {
-    env2.stack.push({ async: true });
+    env3.stack.push({ async: true });
   }
   return value;
 }
-function __disposeResources(env2) {
+function __disposeResources(env3) {
   function fail(e) {
-    env2.error = env2.hasError ? new _SuppressedError(e, env2.error, "An error was suppressed during disposal.") : e;
-    env2.hasError = true;
+    env3.error = env3.hasError ? new _SuppressedError(e, env3.error, "An error was suppressed during disposal.") : e;
+    env3.hasError = true;
   }
   var r, s = 0;
   function next() {
-    while (r = env2.stack.pop()) {
+    while (r = env3.stack.pop()) {
       try {
-        if (!r.async && s === 1) return s = 0, env2.stack.push(r), Promise.resolve().then(next);
+        if (!r.async && s === 1) return s = 0, env3.stack.push(r), Promise.resolve().then(next);
         if (r.dispose) {
           var result = r.dispose.call(r.value);
           if (r.async) return s |= 2, Promise.resolve(result).then(next, function(e) {
@@ -32524,8 +32524,8 @@ function __disposeResources(env2) {
         fail(e);
       }
     }
-    if (s === 1) return env2.hasError ? Promise.reject(env2.error) : Promise.resolve();
-    if (env2.hasError) throw env2.error;
+    if (s === 1) return env3.hasError ? Promise.reject(env3.error) : Promise.resolve();
+    if (env3.hasError) throw env3.error;
   }
   return next();
 }
@@ -52635,6 +52635,9 @@ var CopilotApiGateway = class {
       if (body?.max_completion_tokens && !body?.max_tokens) {
         body.max_tokens = body.max_completion_tokens;
       }
+      if (body?.reasoning_effort && !body?.reasoning) {
+        body.reasoning = { effort: body.reasoning_effort };
+      }
       if (body?.messages && Array.isArray(body.messages)) {
         for (const msg of body.messages) {
           if (msg.role === "developer") {
@@ -52796,6 +52799,9 @@ var CopilotApiGateway = class {
       const body = await this.readJsonBody(req);
       if (body?.max_completion_tokens && !body?.max_tokens) {
         body.max_tokens = body.max_completion_tokens;
+      }
+      if (body?.reasoning_effort && !body?.reasoning) {
+        body.reasoning = { effort: body.reasoning_effort };
       }
       if (body?.messages && Array.isArray(body.messages)) {
         for (const msg of body.messages) {
@@ -53554,14 +53560,14 @@ data: ${JSON.stringify({
           store: payload.store ?? true,
           temperature: payload.temperature ?? 1,
           text: {
-            format: {
+            format: payload.text?.format ?? {
               type: "text"
             }
           },
           tool_choice: payload.tool_choice ?? "auto",
           tools: payload.tools ?? [],
           top_p: payload.top_p ?? 1,
-          truncation: "disabled",
+          truncation: payload.truncation ?? "disabled",
           usage: null,
           user: null,
           metadata: payload.metadata ?? {}
@@ -53674,14 +53680,14 @@ data: ${JSON.stringify({
             store: payload.store ?? true,
             temperature: payload.temperature ?? 1,
             text: {
-              format: {
+              format: payload.text?.format ?? {
                 type: "text"
               }
             },
             tool_choice: payload.tool_choice ?? "auto",
             tools: payload.tools ?? [],
             top_p: payload.top_p ?? 1,
-            truncation: "disabled",
+            truncation: payload.truncation ?? "disabled",
             usage: {
               input_tokens: inputTokens,
               input_tokens_details: {
@@ -55221,6 +55227,8 @@ ${text} `;
               stream: { type: "boolean", default: false, description: "Enable streaming responses" },
               temperature: { type: "number", minimum: 0, maximum: 2, description: "Sampling temperature" },
               max_tokens: { type: "integer", description: "Maximum tokens to generate" },
+              max_completion_tokens: { type: "integer", description: "Maximum completion tokens (GPT-5.x style, auto-normalized to max_tokens)" },
+              reasoning_effort: { type: "string", enum: ["low", "medium", "high", "minimal", "none", "xhigh"], description: "Reasoning effort for o-series models" },
               tools: {
                 type: "array",
                 items: { $ref: "#/components/schemas/Tool" },
@@ -55238,7 +55246,7 @@ ${text} `;
             type: "object",
             required: ["role", "content"],
             properties: {
-              role: { type: "string", enum: ["system", "user", "assistant", "tool"], description: "Role of the message sender" },
+              role: { type: "string", enum: ["system", "developer", "user", "assistant", "tool"], description: "Role of the message sender (developer is auto-normalized to system)" },
               content: { type: "string", description: "Message content" },
               name: { type: "string", description: "Name of the sender (optional)" },
               tool_calls: { type: "array", items: { $ref: "#/components/schemas/ToolCall" } },
@@ -55354,7 +55362,16 @@ ${text} `;
               top_p: { type: "number", minimum: 0, maximum: 1, description: "Nucleus sampling parameter" },
               max_output_tokens: { type: "integer", description: "Maximum tokens to generate" },
               tools: { type: "array", items: { type: "object" }, description: "Tool definitions for function calling" },
-              metadata: { type: "object", description: "Custom metadata key-value pairs" }
+              tool_choice: { type: "string", description: "How to select tools: auto, none, or specific" },
+              metadata: { type: "object", description: "Custom metadata key-value pairs" },
+              reasoning: {
+                type: "object",
+                properties: { effort: { type: "string", enum: ["low", "medium", "high", "minimal", "none", "xhigh"] } },
+                description: "Reasoning configuration for o-series models"
+              },
+              truncation: { type: "string", enum: ["auto", "disabled"], description: "Context truncation strategy", default: "disabled" },
+              store: { type: "boolean", description: "Whether to store the response", default: true },
+              previous_response_id: { type: "string", description: "ID of previous response for multi-turn conversations" }
             }
           },
           ResponsesResponse: {
@@ -56190,6 +56207,7 @@ var CopilotPanel = class _CopilotPanel {
   static currentPanel;
   // Track previous state to prevent unnecessary re-renders
   _lastRunningState;
+  _lastTunnelState;
   static panelDisposables = [];
   _gateway;
   async _init() {
@@ -56239,6 +56257,9 @@ var CopilotPanel = class _CopilotPanel {
         case "editSystemPrompt":
           void vscode5.commands.executeCommand("github-copilot-api-vscode.editSystemPrompt");
           break;
+        case "switchModel":
+          void vscode5.commands.executeCommand("github-copilot-api-vscode.showServerControls");
+          break;
         default:
           _CopilotPanel.handleMessage(data, this._gateway);
       }
@@ -56247,7 +56268,8 @@ var CopilotPanel = class _CopilotPanel {
   _hookEvents(gateway2) {
     gateway2.onDidChangeStatus(async () => {
       const status = await gateway2.getStatus();
-      if (this._lastRunningState === status.running) {
+      const tunnelRunning = status.tunnel?.running ?? false;
+      if (this._lastRunningState === status.running && this._lastTunnelState === tunnelRunning) {
         const activeConnections = gateway2.getServerStatus().activeConnections;
         if (this._view) {
           this._view.webview.postMessage({ type: "statsData", data: status.stats });
@@ -56260,6 +56282,7 @@ var CopilotPanel = class _CopilotPanel {
         return;
       }
       this._lastRunningState = status.running;
+      this._lastTunnelState = tunnelRunning;
       if (this._view) {
         this._view.webview.html = await this._getSidebarHtml(this._view.webview);
       }
@@ -56370,8 +56393,8 @@ var CopilotPanel = class _CopilotPanel {
     const auditService = gateway2.getAuditService();
     const lifetime = await auditService.getLifetimeStats();
     const today = await auditService.getTodayStats();
-    const PRICE_IN = 2.5 / 1e6;
-    const PRICE_OUT = 10 / 1e6;
+    const PRICE_IN = 2 / 1e6;
+    const PRICE_OUT = 8 / 1e6;
     const savedTotal = lifetime.totalTokensIn * PRICE_IN + lifetime.totalTokensOut * PRICE_OUT;
     const savedToday = today.tokensIn * PRICE_IN + today.tokensOut * PRICE_OUT;
     const formatMoney = (amount) => {
@@ -56883,8 +56906,9 @@ for await (const chunk of stream) {
     const protocol = status.isHttps ? "https" : "http";
     const displayHost = status.config.host === "0.0.0.0" && status.networkInfo?.localIPs?.length ? status.networkInfo.localIPs[0] : status.config.host;
     const url2 = `${protocol}://${displayHost}:${status.config.port}`;
-    const stats = status.stats || { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0, requestsPerMinute: 0, avgLatencyMs: 0 };
+    const stats = status.stats || { totalRequests: 0, totalTokensIn: 0, totalTokensOut: 0, requestsPerMinute: 0, avgLatencyMs: 0, uptimeMs: 0, startTime: Date.now() };
     const realtimeStats = status.realtimeStats || { requestsPerMinute: 0, avgLatencyMs: 0, errorRate: 0 };
+    const recentHistory = this._gateway.getHistory(5);
     const dailyStats = await this._gateway.getDailyStats(7);
     const maxRequests = Math.max(...dailyStats.map((d) => d.totalRequests), 1);
     const barWidth = 20;
@@ -56901,6 +56925,24 @@ for await (const chunk of stream) {
                 <text x="${x + barWidth / 2}" y="${chartHeight + 12}" font-size="8" fill="var(--vscode-descriptionForeground)" text-anchor="middle">${dayLabel}</text>
             `;
     }).join("");
+    const hasAuth = !!status.config.apiKey;
+    const isHttps = status.isHttps;
+    const uptimeMs = stats.uptimeMs || 0;
+    const startTime = stats.startTime || Date.now();
+    const feedHtml = recentHistory.map((entry) => {
+      const time3 = new Date(entry.timestamp).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      const methodColor = entry.method === "POST" ? "var(--vscode-charts-green)" : "var(--vscode-charts-blue)";
+      const statusClass = entry.status && entry.status < 400 ? "success" : "error";
+      const statusColor2 = statusClass === "success" ? "var(--vscode-testing-iconPassed)" : "var(--vscode-testing-iconFailed)";
+      const path4 = entry.path?.length > 22 ? "\u2026" + entry.path.slice(-20) : entry.path || "/";
+      return `<div class="feed-item">
+                <span class="feed-time">${time3}</span>
+                <span class="feed-method" style="color:${methodColor}">${entry.method || "POST"}</span>
+                <span class="feed-path">${path4}</span>
+                <span class="feed-status" style="color:${statusColor2}">${entry.status || "\u2014"}</span>
+                <span class="feed-latency">${entry.durationMs || 0}ms</span>
+            </div>`;
+    }).join("");
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56911,28 +56953,58 @@ for await (const chunk of stream) {
         body { margin: 0; padding: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-sideBar-background); }
         .section { padding: 12px; border-bottom: 1px solid var(--vscode-widget-border); }
         .section:last-child { border-bottom: none; }
-        .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin-bottom: 10px; font-weight: 600; }
-        .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 6px ${statusColor}; }
+        .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 6px ${statusColor}; transition: all 0.3s ease; }
+        ${isRunning ? ".dot { animation: pulse-dot 2s ease-in-out infinite; }" : ""}
+        @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 6px ${statusColor}; } 50% { box-shadow: 0 0 14px ${statusColor}, 0 0 20px ${statusColor}; } }
         .url { font-family: var(--vscode-editor-font-family); font-size: 10px; opacity: 0.7; word-break: break-all; }
+        .uptime { font-size: 10px; opacity: 0.6; margin-top: 4px; font-family: var(--vscode-editor-font-family); }
+        .model-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+        .model-label { font-size: 10px; opacity: 0.6; }
+        .model-name { font-size: 11px; font-weight: 600; color: var(--vscode-textLink-foreground); cursor: pointer; }
+        .model-name:hover { text-decoration: underline; }
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-        .stat-card { background: var(--vscode-editor-background); border-radius: 6px; padding: 8px 10px; text-align: center; border: 1px solid var(--vscode-widget-border); }
+        .stat-card { background: var(--vscode-editor-background); border-radius: 6px; padding: 8px 10px; text-align: center; border: 1px solid var(--vscode-widget-border); transition: border-color 0.15s ease; }
+        .stat-card:hover { border-color: var(--vscode-focusBorder); }
         .stat-value { font-size: 18px; font-weight: 700; color: var(--vscode-foreground); }
         .stat-label { font-size: 9px; text-transform: uppercase; opacity: 0.6; margin-top: 2px; }
         .chart-container { background: var(--vscode-editor-background); border-radius: 8px; padding: 12px; border: 1px solid var(--vscode-widget-border); }
         .chart-title { font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.9; }
-        button { width: 100%; padding: 8px 12px; margin-bottom: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-family: var(--vscode-font-family); font-weight: 500; font-size: 12px; }
-        button:hover { background: var(--vscode-button-hoverBackground); }
+        button { width: 100%; padding: 8px 12px; margin-bottom: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-family: var(--vscode-font-family); font-weight: 500; font-size: 12px; transition: all 0.15s ease; }
+        button:hover { background: var(--vscode-button-hoverBackground); transform: translateY(-1px); }
+        button:active { transform: scale(0.98); }
         button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
         button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
         .btn-row { display: flex; gap: 6px; margin-bottom: 6px; }
         .btn-row button { flex: 1; padding: 6px 8px; font-size: 11px; margin-bottom: 0; }
         .copilot-status { font-size: 10px; opacity: 0.7; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
         .copilot-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+        /* Live Feed */
+        .feed-container { background: var(--vscode-editor-background); border-radius: 6px; border: 1px solid var(--vscode-widget-border); overflow: hidden; }
+        .feed-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; font-family: var(--vscode-editor-font-family); border-bottom: 1px solid var(--vscode-widget-border); transition: background 0.1s ease; }
+        .feed-item:last-child { border-bottom: none; }
+        .feed-item:hover { background: var(--vscode-list-hoverBackground); }
+        .feed-item.new { animation: feed-flash 0.5s ease; }
+        @keyframes feed-flash { from { background: var(--vscode-editor-selectionBackground); } to { background: transparent; } }
+        .feed-time { opacity: 0.5; min-width: 52px; }
+        .feed-method { font-weight: 700; min-width: 30px; }
+        .feed-path { flex: 1; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .feed-status { font-weight: 600; min-width: 24px; text-align: right; }
+        .feed-latency { opacity: 0.5; min-width: 36px; text-align: right; }
+        .feed-empty { padding: 12px; text-align: center; font-size: 11px; opacity: 0.5; }
+
+        /* Config Toggles */
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+        .toggle-label { font-size: 11px; display: flex; align-items: center; gap: 6px; }
+        .toggle-indicator { width: 8px; height: 8px; border-radius: 50%; }
+        .toggle-on { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 4px var(--vscode-testing-iconPassed); }
+        .toggle-off { background: var(--vscode-descriptionForeground); opacity: 0.4; }
     </style>
 </head>
 <body>
-    <!-- Status Section (at top) -->
+    <!-- Status Section -->
     <div class="section">
         <div class="section-title">Server Status</div>
         <div class="status-row">
@@ -56940,6 +57012,11 @@ for await (const chunk of stream) {
             <strong>${statusText}</strong>
         </div>
         <div class="url">${url2}</div>
+        <div class="model-row">
+            <span class="model-label">Model:</span>
+            <span class="model-name" id="model-name" title="Click to switch model">${status.config.defaultModel || "gpt-4o"}</span>
+        </div>
+        ${isRunning ? `<div class="uptime" id="uptime-display">\u23F1 Uptime: calculating...</div>` : ""}
         <div class="copilot-status">
             <div class="copilot-dot" style="background: ${status.copilot.ready ? "var(--vscode-testing-iconPassed)" : "var(--vscode-editorWarning-foreground)"}"></div>
             Copilot: ${status.copilot.ready ? "Ready" : status.copilot.signedIn ? "Checking" : "Sign-in Needed"}
@@ -56956,21 +57033,15 @@ for await (const chunk of stream) {
         </div>
     </div>
 
-    <!-- Actions Section -->
+    <!-- Primary Actions -->
     <div class="section">
         <div class="section-title">\u26A1 Actions</div>
-        <div class="actions">
-            <button id="btn-toggle" class="secondary">${isRunning ? "\u23F9 Stop Server" : "\u25B6 Start Server"}</button>
-            <button id="btn-edit-system-prompt" class="secondary">\u{1F4DD} System Prompt</button>
-            <button id="btn-swagger" class="secondary">\u{1F4DD} Swagger API</button>
-            <button id="btn-wiki" class="secondary">\u{1F4DA} Wiki</button>
-            <button id="btn-docs" class="secondary">\u{1F4DA} How to Use</button>
-            <button id="btn-dashboard" class="primary">Open Dashboard \u2197</button>
-            <button id="btn-notes" class="secondary">\u{1F4D6} Things you should read</button>
-        </div>
+        <button id="btn-toggle">${isRunning ? "\u23F9 Stop Server" : "\u25B6 Start Server"}</button>
+        <button id="btn-dashboard">\u{1F4CA} Open Dashboard \u2197</button>
+        <button id="btn-swagger" class="secondary">\u{1F4DD} Swagger API</button>
     </div>
 
-    <!-- Analytics Section -->
+    <!-- Live Stats Section -->
     <div class="section">
         <div class="section-title">\u{1F4CA} Live Stats</div>
         <div class="stats-grid">
@@ -56982,6 +57053,14 @@ for await (const chunk of stream) {
                 <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 10px; opacity: 0.6;">ms</span></div>
                 <div class="stat-label">Latency</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total" style="font-size: 14px;">${this.formatNumber(stats.totalRequests)}</div>
+                <div class="stat-label">Total Reqs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-errors" style="font-size: 14px; color: ${(realtimeStats.errorRate || 0) > 0 ? "var(--vscode-testing-iconFailed)" : "var(--vscode-testing-iconPassed)"};">${realtimeStats.errorRate || 0}%</div>
+                <div class="stat-label">Error Rate</div>
+            </div>
         </div>
 
         <div class="chart-container">
@@ -56989,6 +57068,14 @@ for await (const chunk of stream) {
             <svg width="${chartWidth}" height="${chartHeight + 16}" style="display: block; margin: 0 auto;">
                 ${barsHtml}
             </svg>
+        </div>
+    </div>
+
+    <!-- Live Request Feed -->
+    <div class="section">
+        <div class="section-title">\u26A1 Live Feed</div>
+        <div class="feed-container" id="feed-container">
+            ${feedHtml || '<div class="feed-empty">No requests yet</div>'}
         </div>
     </div>
 
@@ -57003,7 +57090,35 @@ for await (const chunk of stream) {
             <div class="stat-card">
                 <div class="stat-value" id="stat-tokens-out" style="font-size: 14px; color: var(--vscode-charts-orange);">${this.formatNumber(stats.totalTokensOut)}</div>
                 <div class="stat-label">Tokens Out</div>
+            </div>
         </div>
+    </div>
+
+    <!-- Config Status -->
+    <div class="section">
+        <div class="section-title">\u{1F527} Config</div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${hasAuth ? "toggle-on" : "toggle-off"}"></span> Authentication</span>
+            <span style="font-size: 10px; opacity: 0.6;">${hasAuth ? "\u{1F512} On" : "\u{1F513} Off"}</span>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${isHttps ? "toggle-on" : "toggle-off"}"></span> HTTPS</span>
+            <span style="font-size: 10px; opacity: 0.6;">${isHttps ? "\u2705 On" : "Off"}</span>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label"><span class="toggle-indicator ${status.tunnel?.running ? "toggle-on" : "toggle-off"}"></span> Tunnel</span>
+            <span style="font-size: 10px; opacity: 0.6;">${status.tunnel?.running ? "\u{1F310} Active" : "Off"}</span>
+        </div>
+    </div>
+
+
+    <!-- More Actions -->
+    <div class="section">
+        <div class="section-title">More</div>
+        <button id="btn-edit-system-prompt" class="secondary">\u{1F4DD} System Prompt</button>
+        <button id="btn-wiki" class="secondary">\u{1F4DA} Wiki</button>
+        <button id="btn-docs" class="secondary">\u{1F4DA} How to Use</button>
+        <button id="btn-notes" class="secondary">\u{1F4D6} Things you should read</button>
     </div>
 
     <!-- GitHub Star Section -->
@@ -57029,6 +57144,8 @@ for await (const chunk of stream) {
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         const serverUrl = '${url2}';
+        const serverStartTime = ${startTime};
+        const isRunning = ${isRunning};
         const curlCommand = \`curl -X POST ${url2}/v1/chat/completions \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'\`;
@@ -57055,6 +57172,26 @@ print(response.choices[0].message.content)\`;
             });
         }
 
+        // Uptime ticker
+        if (isRunning) {
+            const uptimeEl = document.getElementById('uptime-display');
+            function updateUptime() {
+                const elapsed = Date.now() - serverStartTime;
+                const s = Math.floor(elapsed / 1000);
+                const m = Math.floor(s / 60);
+                const h = Math.floor(m / 60);
+                const d = Math.floor(h / 24);
+                let str = '';
+                if (d > 0) str += d + 'd ';
+                if (h > 0) str += (h % 24) + 'h ';
+                str += (m % 60) + 'm ' + (s % 60) + 's';
+                if (uptimeEl) uptimeEl.textContent = '\u23F1 ' + str;
+            }
+            updateUptime();
+            setInterval(updateUptime, 1000);
+        }
+
+        // Button handlers
         document.getElementById('btn-copy-url').addEventListener('click', (e) => copyWithFeedback(e.target, serverUrl));
         document.getElementById('btn-copy-curl').addEventListener('click', (e) => copyWithFeedback(e.target, curlCommand));
         document.getElementById('btn-copy-python').addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
@@ -57062,8 +57199,8 @@ print(response.choices[0].message.content)\`;
         document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? "stopServer" : "startServer"}' }));
         document.getElementById('btn-edit-system-prompt').addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
         document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
-        document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
         document.getElementById('btn-wiki').addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
+        document.getElementById('model-name').addEventListener('click', () => vscode.postMessage({ type: 'switchModel' }));
         const btnDocs = document.getElementById('btn-docs');
         if (btnDocs) {
             btnDocs.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' }));
@@ -57071,6 +57208,68 @@ print(response.choices[0].message.content)\`;
         const btnNotes = document.getElementById('btn-notes');
         if (btnNotes) {
             btnNotes.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in' }));
+        }
+
+        // Live feed management
+        const feedContainer = document.getElementById('feed-container');
+        const MAX_FEED_ITEMS = 5;
+
+        function addFeedItem(log) {
+            // Remove empty message if present
+            const empty = feedContainer.querySelector('.feed-empty');
+            if (empty) empty.remove();
+
+            const time = new Date(log.timestamp || Date.now()).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const methodColor = log.method === 'POST' ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)';
+            const statusOk = log.status && log.status < 400;
+            const statusColor = statusOk ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-testing-iconFailed)';
+            const path = (log.path || '/').length > 22 ? '\u2026' + (log.path || '/').slice(-20) : (log.path || '/');
+
+            const item = document.createElement('div');
+            item.className = 'feed-item new';
+            item.innerHTML = \`
+                <span class="feed-time">\${time}</span>
+                <span class="feed-method" style="color:\${methodColor}">\${log.method || 'POST'}</span>
+                <span class="feed-path">\${path}</span>
+                <span class="feed-status" style="color:\${statusColor}">\${log.status || '\u2026'}</span>
+                <span class="feed-latency">\${log.latencyMs || 0}ms</span>
+            \`;
+
+            feedContainer.insertBefore(item, feedContainer.firstChild);
+
+            // Trim to max items
+            while (feedContainer.children.length > MAX_FEED_ITEMS) {
+                feedContainer.removeChild(feedContainer.lastChild);
+            }
+
+            // Remove animation class after it plays
+            setTimeout(() => item.classList.remove('new'), 500);
+        }
+
+        function updatePendingFeed(startLog) {
+            const empty = feedContainer.querySelector('.feed-empty');
+            if (empty) empty.remove();
+
+            const time = new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+            const methodColor = startLog.method === 'POST' ? 'var(--vscode-charts-green)' : 'var(--vscode-charts-blue)';
+            const path = (startLog.path || '/').length > 22 ? '\u2026' + (startLog.path || '/').slice(-20) : (startLog.path || '/');
+
+            const item = document.createElement('div');
+            item.className = 'feed-item new';
+            item.setAttribute('data-request-id', startLog.requestId || '');
+            item.innerHTML = \`
+                <span class="feed-time">\${time}</span>
+                <span class="feed-method" style="color:\${methodColor}">\${startLog.method || 'POST'}</span>
+                <span class="feed-path">\${path}</span>
+                <span class="feed-status" style="opacity:0.4">\u2026</span>
+                <span class="feed-latency" style="opacity:0.4">\u2014</span>
+            \`;
+
+            feedContainer.insertBefore(item, feedContainer.firstChild);
+            while (feedContainer.children.length > MAX_FEED_ITEMS) {
+                feedContainer.removeChild(feedContainer.lastChild);
+            }
+            setTimeout(() => item.classList.remove('new'), 500);
         }
 
         // Listen for real-time stats updates from extension
@@ -57086,15 +57285,28 @@ print(response.choices[0].message.content)\`;
                 const stats = message.data;
                 const rpmEl = document.getElementById('stat-rpm');
                 const latencyEl = document.getElementById('stat-latency');
+                const errEl = document.getElementById('stat-errors');
                 if (rpmEl) rpmEl.textContent = stats.requestsPerMinute;
                 if (latencyEl) latencyEl.innerHTML = stats.avgLatencyMs + '<span style="font-size: 10px; opacity: 0.6;">ms</span>';
+                if (errEl) {
+                    errEl.textContent = (stats.errorRate || 0) + '%';
+                    errEl.style.color = (stats.errorRate || 0) > 0 ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconPassed)';
+                }
             }
             if (message.type === 'statsData' && message.data) {
                 const stats = message.data;
                 const tokensInEl = document.getElementById('stat-tokens-in');
                 const tokensOutEl = document.getElementById('stat-tokens-out');
+                const totalEl = document.getElementById('stat-total');
                 if (tokensInEl) tokensInEl.textContent = formatNumber(stats.totalTokensIn);
                 if (tokensOutEl) tokensOutEl.textContent = formatNumber(stats.totalTokensOut);
+                if (totalEl) totalEl.textContent = formatNumber(stats.totalRequests);
+            }
+            if (message.type === 'liveLog' && message.value) {
+                addFeedItem(message.value);
+            }
+            if (message.type === 'liveLogStart' && message.value) {
+                updatePendingFeed(message.value);
             }
         });
     </script>
@@ -57125,8 +57337,8 @@ print(response.choices[0].message.content)\`;
     const auditService = gateway2.getAuditService();
     const lifetimeStats = await auditService.getLifetimeStats();
     const todayStats = await auditService.getTodayStats();
-    const PRICE_IN = 2.5 / 1e6;
-    const PRICE_OUT = 10 / 1e6;
+    const PRICE_IN = 2 / 1e6;
+    const PRICE_OUT = 8 / 1e6;
     const savedTotal = lifetimeStats.totalTokensIn * PRICE_IN + lifetimeStats.totalTokensOut * PRICE_OUT;
     const savedToday = todayStats.tokensIn * PRICE_IN + todayStats.tokensOut * PRICE_OUT;
     const formatMoney = (amount) => {
@@ -57571,7 +57783,7 @@ print(response.choices[0].message.content)\`;
                 <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u{1F4B8} Est. Savings</h3>
                 <div style="font-size: 28px; font-weight: 600; color: var(--vscode-testing-iconPassed);">${formatMoney(savedTotal)}</div>
                 <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;">+${formatMoney(savedToday)} today</div>
-                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4o pricing</div>
+                <div style="font-size: 9px; opacity: 0.4; margin-top: 8px;">*Approx. based on GPT-4.1 pricing</div>
             </div>
             <div class="card">
                 <h3 style="font-size: 12px; text-transform: uppercase; opacity: 0.7; margin-bottom: 8px;">\u{1F4CA} Traffic</h3>
@@ -58905,7 +59117,14 @@ function activate(context) {
   const updateStatusBar = async () => {
     if (!gateway) {
       statusItem.text = "$(circle-slash) Copilot API: OFF";
-      statusItem.tooltip = "Copilot API Gateway is stopped (Standby Mode)";
+      statusItem.tooltip = new vscode7.MarkdownString(`
+**$(circle-slash) Copilot API Gateway**
+
+Server is stopped. Click to start or manage.
+
+*Tip: Enable auto-start in settings for convenience*
+			`);
+      statusItem.tooltip.isTrusted = true;
       statusItem.backgroundColor = void 0;
       statusItem.show();
       return;
@@ -58915,20 +59134,30 @@ function activate(context) {
       const rpm = status.stats.requestsPerMinute;
       const latency = status.stats.avgLatencyMs;
       const errorRate = status.stats.errorRate || 0;
-      let text = `$(broadcast) Copilot API: ON`;
-      if (rpm > 0 || status.activeRequests > 0) {
-        text += `  $(graph) ${rpm} RPM`;
-      }
-      if (latency > 0) {
-        text += `  $(pulse) ${latency}ms`;
-      }
-      if (errorRate >= 5) {
-        text += `  $(warning) ${errorRate}%`;
-      }
+      const totalReqs = status.stats.totalRequests;
+      const uptimeMs = status.stats.uptimeMs || 0;
+      const tunnelActive = status.tunnel?.running ?? false;
+      const uptimeSec = Math.floor(uptimeMs / 1e3);
+      const uptimeMin = Math.floor(uptimeSec / 60);
+      const uptimeHrs = Math.floor(uptimeMin / 60);
+      const uptimeStr = uptimeHrs > 0 ? `${uptimeHrs}h ${uptimeMin % 60}m` : uptimeMin > 0 ? `${uptimeMin}m ${uptimeSec % 60}s` : `${uptimeSec}s`;
       if (status.activeRequests > 0) {
         statusItem.text = `$(sync~spin) Processing (${status.activeRequests}) | ${rpm} RPM`;
         statusItem.backgroundColor = new vscode7.ThemeColor("statusBarItem.warningBackground");
       } else {
+        let text = `$(broadcast) Copilot API`;
+        if (rpm > 0) {
+          text += `  $(graph) ${rpm}`;
+        }
+        if (latency > 0) {
+          text += `  $(pulse) ${latency}ms`;
+        }
+        if (errorRate >= 5) {
+          text += `  $(warning) ${errorRate}%`;
+        }
+        if (tunnelActive) {
+          text += `  $(globe)`;
+        }
         statusItem.text = text;
         statusItem.backgroundColor = void 0;
       }
@@ -58941,12 +59170,15 @@ function activate(context) {
 | Metric | Value |
 |--------|-------|
 | Status | \u{1F7E2} Active |
+| Default Model | \`${status.config.defaultModel}\` |
 | Endpoint | \`${url2}\` |
+| Uptime | ${uptimeStr} |
+| Total Requests | ${totalReqs.toLocaleString()} |
 | Requests/min | ${rpm} |
 | Avg Latency | ${latency}ms |
 | Error Rate | ${errorRate}% |
-| Total Requests | ${status.stats.totalRequests.toLocaleString()} |
 | Tokens In/Out | ${(status.stats.totalTokensIn || 0).toLocaleString()} / ${(status.stats.totalTokensOut || 0).toLocaleString()} |
+| Tunnel | ${tunnelActive ? "\u{1F310} Active" : "\u2014"} |
 
 *Click to open controls*
 			`);
@@ -58961,6 +59193,7 @@ Server is stopped. Click to start or manage.
 
 *Tip: Enable auto-start in settings for convenience*
 			`);
+      statusItem.tooltip.isTrusted = true;
       statusItem.backgroundColor = new vscode7.ThemeColor("statusBarItem.errorBackground");
       statusItem.show();
     }
@@ -59003,11 +59236,19 @@ Server is stopped. Click to start or manage.
     const gw = await getGateway();
     const status = await gw.getStatus();
     const items = [];
+    const protocol = status.isHttps ? "https" : "http";
+    const displayHost = status.config.host === "0.0.0.0" && status.networkInfo?.localIPs?.length ? status.networkInfo.localIPs[0] : status.config.host;
+    const url2 = `${protocol}://${displayHost}:${status.config.port}`;
     if (status.running) {
+      const uptimeMs = status.stats.uptimeMs || 0;
+      const uptimeSec = Math.floor(uptimeMs / 1e3);
+      const uptimeMin = Math.floor(uptimeSec / 60);
+      const uptimeHrs = Math.floor(uptimeMin / 60);
+      const uptimeStr = uptimeHrs > 0 ? `${uptimeHrs}h ${uptimeMin % 60}m` : uptimeMin > 0 ? `${uptimeMin}m` : `${uptimeSec}s`;
       items.push({
-        label: "$(check) Server is Running",
-        description: `http://${status.config.host}:${status.config.port}`,
-        detail: `Requests/min: ${status.stats.requestsPerMinute} | Avg Latency: ${status.stats.avgLatencyMs}ms | Errors: ${status.stats.errorRate}%`,
+        label: `$(check) Running \u2014 ${status.config.defaultModel}`,
+        description: url2,
+        detail: `\u23F1 ${uptimeStr}  \xB7  \u{1F4CA} ${status.stats.totalRequests.toLocaleString()} reqs  \xB7  ${status.stats.requestsPerMinute} RPM  \xB7  ${status.stats.avgLatencyMs}ms avg`,
         kind: vscode7.QuickPickItemKind.Separator
       });
       items.push({
@@ -59028,6 +59269,28 @@ Server is stopped. Click to start or manage.
         description: "Start the API gateway"
       });
     }
+    items.push({ label: "", kind: vscode7.QuickPickItemKind.Separator });
+    items.push({
+      label: "$(clippy) Copy API URL",
+      description: url2
+    });
+    items.push({
+      label: "$(beaker) Quick Test",
+      description: 'Send a test "Hello" request'
+    });
+    items.push({
+      label: "$(symbol-enum) Switch Model",
+      description: `Current: ${status.config.defaultModel}`
+    });
+    items.push({
+      label: "$(edit) Edit System Prompt",
+      description: "Open the default system prompt editor"
+    });
+    const tunnelRunning = status.tunnel?.running ?? false;
+    items.push({
+      label: tunnelRunning ? "$(globe) Tunnel Active" : "$(globe) Start Tunnel",
+      description: tunnelRunning ? status.tunnel?.url ?? "Connected" : "Expose API via Cloudflare"
+    });
     items.push({ label: "", kind: vscode7.QuickPickItemKind.Separator });
     items.push({
       label: "$(dashboard) Open Full Dashboard",
@@ -59054,6 +59317,66 @@ Server is stopped. Click to start or manage.
       CopilotPanel.createOrShow(context.extensionUri, getGateway);
     } else if (selection.label.includes("Show Logs")) {
       output.show();
+    } else if (selection.label.includes("Copy API URL")) {
+      await vscode7.env.clipboard.writeText(url2);
+      void vscode7.window.showInformationMessage(`Copied: ${url2}`);
+    } else if (selection.label.includes("Quick Test")) {
+      if (!status.running) {
+        void vscode7.window.showWarningMessage("Start the server first to run a test.");
+        return;
+      }
+      void vscode7.window.withProgress({ location: vscode7.ProgressLocation.Notification, title: "Testing API..." }, async () => {
+        try {
+          const http = await import("http");
+          const postData = JSON.stringify({ model: status.config.defaultModel, messages: [{ role: "user", content: 'Say "API is working!" in exactly 3 words.' }], max_tokens: 20 });
+          const result = await new Promise((resolve, reject) => {
+            const req = http.request({ hostname: status.config.host === "0.0.0.0" ? "127.0.0.1" : status.config.host, port: status.config.port, path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", ...status.config.apiKey ? { "Authorization": `Bearer ${status.config.apiKey}` } : {} } }, (res) => {
+              let data = "";
+              res.on("data", (chunk) => data += chunk);
+              res.on("end", () => resolve(data));
+            });
+            req.on("error", reject);
+            req.write(postData);
+            req.end();
+          });
+          const parsed = JSON.parse(result);
+          const reply = parsed?.choices?.[0]?.message?.content || "No response";
+          void vscode7.window.showInformationMessage(`\u2705 API Test: ${reply}`);
+        } catch (e) {
+          void vscode7.window.showErrorMessage(`\u274C API Test Failed: ${e.message}`);
+        }
+      });
+    } else if (selection.label.includes("Switch Model")) {
+      const copilotModels = await vscode7.lm.selectChatModels({ vendor: "copilot" });
+      const modelItems = copilotModels.map((m) => ({
+        label: m.id === status.config.defaultModel ? `$(check) ${m.id}` : `     ${m.id}`,
+        description: m.id === status.config.defaultModel ? "(current)" : "",
+        modelId: m.id
+      }));
+      const modelSelection = await vscode7.window.showQuickPick(modelItems, { placeHolder: "Select default model", title: "Switch Default Model" });
+      if (modelSelection) {
+        const newModel = modelSelection.modelId;
+        await gw.setDefaultModel(newModel);
+        void vscode7.window.showInformationMessage(`Default model set to: ${newModel}`);
+      }
+    } else if (selection.label.includes("Edit System Prompt")) {
+      void vscode7.commands.executeCommand("github-copilot-api-vscode.editSystemPrompt");
+    } else if (selection.label.includes("Start Tunnel")) {
+      const result = await gw.startTunnel();
+      if (result.success) {
+        void vscode7.window.showInformationMessage(`Tunnel active at: ${result.url}`);
+      } else {
+        void vscode7.window.showErrorMessage(result.error || "Failed to start tunnel");
+      }
+    } else if (selection.label.includes("Tunnel Active")) {
+      const action = await vscode7.window.showQuickPick(["Copy Tunnel URL", "Stop Tunnel"], { placeHolder: "Tunnel is active" });
+      if (action === "Copy Tunnel URL" && status.tunnel?.url) {
+        await vscode7.env.clipboard.writeText(status.tunnel.url);
+        void vscode7.window.showInformationMessage(`Copied: ${status.tunnel.url}`);
+      } else if (action === "Stop Tunnel") {
+        await gw.stopTunnel();
+        void vscode7.window.showInformationMessage("Tunnel stopped.");
+      }
     }
   });
   statusItem.text = "$(circle-slash) Copilot API: OFF";

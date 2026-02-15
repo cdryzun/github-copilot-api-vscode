@@ -119,6 +119,48 @@ Access your Copilot API from anywhere — your phone, tablet, or share with frie
 
 ---
 
+### 🖥️ Run as a Background Service
+
+The gateway runs inside VS Code's extension host, so VS Code must be running — but it **doesn't need to be visible**. Here's how to run it like a background service:
+
+**Prerequisites:** Enable `autoStart` so the server launches automatically:
+```json
+{ "githubCopilotApi.server.autoStart": true }
+```
+
+**macOS:**
+```bash
+# Launch VS Code minimized (gateway starts automatically)
+open -a "Visual Studio Code" --args --disable-workspace-trust
+
+# Or run completely headless via CLI
+nohup code --disable-workspace-trust &>/dev/null &
+```
+
+**Windows (PowerShell):**
+```powershell
+# Launch minimized
+Start-Process code -ArgumentList "--disable-workspace-trust" -WindowStyle Minimized
+
+# Or add to Task Scheduler for start-on-boot:
+# Program: code
+# Arguments: --disable-workspace-trust
+```
+
+**Linux:**
+```bash
+# Run in background
+nohup code --disable-workspace-trust &>/dev/null &
+
+# Or create a systemd user service (~/.config/systemd/user/copilot-api.service):
+# [Service]
+# ExecStart=/usr/bin/code --disable-workspace-trust
+# Restart=on-failure
+# Then: systemctl --user enable --now copilot-api
+```
+
+> **Note:** VS Code must remain running in the background. If you close VS Code, the gateway stops. The `autoStart` setting ensures the API server starts the moment VS Code opens — no manual clicks needed.
+
 ## 🔌 API Endpoints
 
 | Endpoint | Method | Description |

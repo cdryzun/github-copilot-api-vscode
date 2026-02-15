@@ -4,16 +4,34 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.7.0] - 2026-02-15
+
+### Added
+- **Status Bar:** Shows active model name, uptime counter, tunnel indicator (🌐), and enriched tooltip with full metrics table
+- **Quick Pick Menu:** Copy API URL, Quick Test (sends live "Hello" request), Switch Model (lists all Copilot models), Edit System Prompt, Start/Manage Tunnel
+- **Sidebar:** Animated pulsing status dot, clickable model name for switching, live uptime ticker (ticks every second), 4-stat grid (RPM, latency, total reqs, error rate), live request feed with flash animation, config status indicators (Auth/HTTPS/Tunnel)
+- **README:** "Run as a Background Service" guide for macOS, Windows, and Linux
+
+### Changed
+- Sidebar layout reorganized: stats and live feed now above action buttons for better at-a-glance monitoring
+- Removed duplicate Swagger button event listener from sidebar
+
 ## [2.6.0] - 2026-02-13
 
 ### Added
 - **OpenAI Chat Completions:** `max_completion_tokens` parameter support (auto-normalized to `max_tokens` for GPT-5.x compatibility)
 - **OpenAI Chat Completions:** `developer` role support (auto-mapped to `system` for 2025+ spec)
 - **OpenAI Chat Completions:** `stream_options.include_usage` — emit usage chunk in streaming responses
+- **OpenAI Chat Completions:** `reasoning_effort` parameter support for o-series models (auto-mapped to `reasoning.effort`)
 - **OpenAI Responses API:** `text.format` structured output pass-through (was hardcoded to `text`)
 - **OpenAI Responses API:** `truncation` parameter pass-through
+- **OpenAI Responses API:** Expanded `reasoning.effort` values — added `minimal`, `none`, `xhigh` (Aug–Dec 2025 spec)
+- **OpenAI Responses API:** Streaming events now pass through `text.format` and `truncation` from request
 - **Anthropic Messages API:** `thinking`, `metadata` interface fields; `tool_use` stop reason; cache token usage
 - **Google Generative AI:** `frequencyPenalty`, `presencePenalty`, `responseMimeType`, `responseSchema`, `safetySettings` interface
+- **OpenAPI Spec:** Added `max_completion_tokens`, `reasoning_effort` to Chat Completions schema
+- **OpenAPI Spec:** Added `developer` to Message role enum
+- **OpenAPI Spec:** Added `reasoning`, `truncation`, `store`, `previous_response_id`, `tool_choice` to Responses API schema
 
 ### Changed
 - Updated branding to emphasize free, open-source, and trustworthy nature

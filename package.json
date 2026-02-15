@@ -3,7 +3,7 @@
   "displayName": "GitHub Copilot API Gateway",
   "description": "Free & open-source universal API Gateway for GitHub Copilot. Expose all Copilot models via local OpenAI, Anthropic, Google & Llama compatible APIs. 100% transparent — full source code on GitHub. Use with Cursor, LangChain, Agents & more.",
   "icon": "media/icon.png",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "author": {
     "name": "Suhaib Bin Younis",
     "email": "vscode@suhaib.in",
@@ -78,7 +78,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "cloudflared": "^0.7.1",
-    "selfsigned": "^5.4.0",
+    "selfsigned": "^5.5.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
