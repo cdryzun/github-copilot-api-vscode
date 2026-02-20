@@ -5,8 +5,8 @@
 <h1 align="center">GitHub Copilot API Gateway</h1>
 
 <p align="center">
-  <strong>Use GitHub Copilot like any other AI API — completely free & open-source.</strong><br>
-  One VS Code extension. Zero API keys. 100% transparent. Works with LangChain, Cursor, Aider, and 50+ tools.
+  <strong>Use GitHub Copilot, Gemini, Ollama & any VS Code AI — like any other API.</strong><br>
+  One extension. Zero API keys. Auto-discovers every model. Works with LangChain, Cursor, Aider, and 50+ tools.
 </p>
 
 <p align="center">
@@ -35,6 +35,7 @@
   <img src="https://img.shields.io/badge/Anthropic-191919?style=flat-square&logo=anthropic&logoColor=white" alt="Anthropic">
   <img src="https://img.shields.io/badge/Google-4285F4?style=flat-square&logo=google&logoColor=white" alt="Google">
   <img src="https://img.shields.io/badge/Meta-0467DF?style=flat-square&logo=meta&logoColor=white" alt="Meta">
+  <img src="https://img.shields.io/badge/Ollama-000000?style=flat-square&logo=ollama&logoColor=white" alt="Ollama">
 </p>
 
 <p align="center">
@@ -73,7 +74,7 @@ response = client.chat.completions.create(
 
 ## ✅ What You Can Do
 
-- **Use [Cursor](https://cursor.sh)** with Copilot as the backend model
+- **Use [Cursor](https://cursor.sh)** with Copilot, Gemini, or Ollama as the backend
 - **Run [LangChain](https://langchain.com) agents** without paying for OpenAI
 - **Power [AutoGPT](https://github.com/Significant-Gravitas/AutoGPT)** and [CrewAI](https://crewai.com) agents locally
 - **Query data** with [PandasAI](https://pandas-ai.com) and [LlamaIndex](https://llamaindex.ai)
@@ -81,8 +82,22 @@ response = client.chat.completions.create(
 - **Pair program** with [Aider](https://aider.chat) or [Open Interpreter](https://openinterpreter.com)
 - **Generate code** with GPT Engineer or Sweep
 - **Connect [Clawdbot](https://github.com/clawdbot/clawdbot)** to power AI on WhatsApp, Telegram, Discord & Slack
+- **Mix and match models** — route one request to GPT-4o, the next to Gemini, all on `localhost:3030`
 
 If it speaks OpenAI, it works with this gateway.
+
+### 🔀 Multi-Provider: One Endpoint, Every Model
+
+This gateway **auto-discovers all AI models** registered in VS Code — not just Copilot.
+
+| Provider | How to enable | Example models |
+|----------|---------------|----------------|
+| **GitHub Copilot** | Install [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) extension | `gpt-4o`, `claude-3.5-sonnet`, `o3-mini` |
+| **Google Gemini** | Install [Gemini Code Assist](https://marketplace.visualstudio.com/items?itemName=Google.geminicodeassist) extension | `gemini-2.0-flash` |
+| **Ollama** | Install an Ollama VS Code extension | Local models (llama3, mistral, etc.) |
+| **Any other** | Any extension using `vscode.lm` API | Automatically discovered |
+
+All models are exposed at `GET /v1/models` and routable via the `model` field in any request. No config changes needed — just install the VS Code extension and the models appear.
 
 ### 🤖 Using with Clawdbot (Moltbot)
 

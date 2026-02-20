@@ -298,10 +298,11 @@ Server is stopped. Click to start or manage.
 				}
 			});
 		} else if (selection.label.includes('Switch Model')) {
-			const copilotModels = await vscode.lm.selectChatModels({ vendor: 'copilot' });
-			const modelItems = copilotModels.map(m => ({
+			// Discover ALL available language models from all providers
+			const allModels = await vscode.lm.selectChatModels();
+			const modelItems = allModels.map(m => ({
 				label: m.id === status.config.defaultModel ? `$(check) ${m.id}` : `     ${m.id}`,
-				description: m.id === status.config.defaultModel ? '(current)' : '',
+				description: m.id === status.config.defaultModel ? `(current) · ${m.vendor}` : m.vendor,
 				modelId: m.id
 			}));
 			const modelSelection = await vscode.window.showQuickPick(modelItems, { placeHolder: 'Select default model', title: 'Switch Default Model' });

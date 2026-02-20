@@ -51656,18 +51656,24 @@ var CopilotApiGateway = class {
       (e) => e.id.toLowerCase() === "github.copilot-chat" || e.packageJSON?.publisher === "GitHub" && e.packageJSON?.name === "copilot-chat"
     );
     let signedIn = false;
+    let allModels = [];
     try {
-      const models = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-      signedIn = models && models.length > 0;
+      allModels = await vscode4.lm.selectChatModels();
+      const copilotModels = allModels.filter((m) => m.vendor === "copilot");
+      signedIn = copilotModels.length > 0;
     } catch (e) {
       signedIn = false;
     }
-    const isReady = signedIn || !!copilotExt && !!copilotChatExt && signedIn;
+    const hasAnyModels = allModels.length > 0;
+    const isReady = hasAnyModels || signedIn;
+    const vendors = [...new Set(allModels.map((m) => m.vendor))];
     return {
       installed: !!copilotExt || signedIn,
       chatInstalled: !!copilotChatExt || signedIn,
       signedIn,
-      ready: isReady
+      ready: isReady,
+      totalModels: allModels.length,
+      vendors
     };
   }
   getMcpStatus() {
@@ -52489,7 +52495,7 @@ var CopilotApiGateway = class {
     this.usageStats.requestsByEndpoint[url2.pathname] = (this.usageStats.requestsByEndpoint[url2.pathname] || 0) + 1;
     if (req.method === "GET" && url2.pathname === "/health") {
       try {
-        const models = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+        const models = await vscode4.lm.selectChatModels();
         if (models && models.length > 0) {
           this.sendJson(res, 200, {
             status: "ok",
@@ -52502,7 +52508,7 @@ var CopilotApiGateway = class {
             status: "degraded",
             service: "github-copilot-api-vscode",
             copilot: "unavailable",
-            message: "No Copilot models found. Check if GitHub Copilot is installed and signed in."
+            message: "No language models found. Check if a language model provider (e.g. GitHub Copilot) is installed and signed in."
           });
         }
       } catch {
@@ -52890,11 +52896,11 @@ var CopilotApiGateway = class {
       console.log(`[Google] Client disconnected, cancelling request ${logRequestId || ""}`);
     });
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      const lmModel = this.findModel(resolvedModel, copilotModels);
       if (!lmModel) {
         throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
@@ -53007,11 +53013,11 @@ var CopilotApiGateway = class {
       }
     }, 15e3);
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      const lmModel = this.findModel(resolvedModel, copilotModels);
       if (!lmModel) {
         throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
@@ -53114,12 +53120,12 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
   }
   async getAvailableModels() {
     const now = Math.floor(Date.now() / 1e3);
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
-    const modelData = copilotModels.map((model) => ({
+    const allModels = await vscode4.lm.selectChatModels();
+    const modelData = allModels.map((model) => ({
       id: model.id,
       object: "model",
       created: now,
-      owned_by: model.vendor || "github-copilot",
+      owned_by: model.vendor || "unknown",
       name: model.name,
       family: model.family,
       version: model.version,
@@ -53150,11 +53156,11 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       "Access-Control-Allow-Origin": "*"
     });
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const lmModel = this.findCopilotModel(model, copilotModels);
+      const lmModel = this.findModel(model, copilotModels);
       if (!lmModel) {
         throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
@@ -53340,11 +53346,11 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
   async processTokenize(payload) {
     const text = payload?.text || payload?.input || "";
     const model = this.resolveModel(payload?.model);
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    const copilotModels = await vscode4.lm.selectChatModels();
     if (!copilotModels || copilotModels.length === 0) {
-      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+      throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
     }
-    const lmModel = this.findCopilotModel(model, copilotModels) || copilotModels[0];
+    const lmModel = this.findModel(model, copilotModels) || copilotModels[0];
     const tokenCount = await lmModel.countTokens(text);
     return {
       object: "token_count",
@@ -53386,11 +53392,11 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       }
     }
     const model = this.resolveModel(payload?.model);
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    const copilotModels = await vscode4.lm.selectChatModels();
     if (!copilotModels || copilotModels.length === 0) {
-      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+      throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
     }
-    const selectedModel = this.findCopilotModel(model, copilotModels);
+    const selectedModel = this.findModel(model, copilotModels);
     if (!selectedModel) {
       throw new ApiError(404, `Model "${model}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
     }
@@ -53526,11 +53532,11 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
     }, 15e3);
     let totalContent = "";
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const selectedModel = this.findCopilotModel(model, copilotModels);
+      const selectedModel = this.findModel(model, copilotModels);
       if (!selectedModel) {
         throw new ApiError(404, `Model "${model}" not found.`, "invalid_request_error", "model_not_found");
       }
@@ -53763,11 +53769,11 @@ data: ${JSON.stringify({
       }).join(" ");
     }).join("\n");
     const text = await this.runWithConcurrency(async () => {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      const lmModel = this.findModel(resolvedModel, copilotModels);
       if (!lmModel) {
         throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
@@ -53784,7 +53790,7 @@ data: ${JSON.stringify({
     let outputTokens = 0;
     try {
       const promptStr2 = messages.map((m) => m.content).join(" ");
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (copilotModels && copilotModels.length > 0) {
         const lmModel = copilotModels[0];
         inputTokens = await lmModel.countTokens(promptStr2);
@@ -53836,11 +53842,11 @@ data: ${JSON.stringify({
       }).join(" ");
     }).join("\n");
     const text = await this.runWithConcurrency(async () => {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const lmModel = this.findCopilotModel(resolvedModel, copilotModels);
+      const lmModel = this.findModel(resolvedModel, copilotModels);
       if (!lmModel) {
         throw new ApiError(404, `Model "${resolvedModel}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
@@ -53857,7 +53863,7 @@ data: ${JSON.stringify({
     let outputTokens = 0;
     try {
       const promptStr2 = messages.map((m) => m.content).join(" ");
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (copilotModels && copilotModels.length > 0) {
         const lmModel = copilotModels[0];
         inputTokens = await lmModel.countTokens(promptStr2);
@@ -53889,11 +53895,11 @@ data: ${JSON.stringify({
     messages = this.injectSystemPrompt(messages);
     messages = this.redactMessagesContent(messages);
     const model = this.resolveModel(payload?.model);
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    const copilotModels = await vscode4.lm.selectChatModels();
     if (!copilotModels || copilotModels.length === 0) {
-      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+      throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
     }
-    const selectedModel = this.findCopilotModel(model, copilotModels);
+    const selectedModel = this.findModel(model, copilotModels);
     if (!selectedModel) {
       throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
     }
@@ -53976,7 +53982,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     let promptTokens = 0;
     let completionTokens = 0;
     try {
-      const copilotModels2 = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels2 = await vscode4.lm.selectChatModels();
       if (copilotModels2 && copilotModels2.length > 0) {
         const lmModel = copilotModels2[0];
         const inputStr = messages.map((m) => {
@@ -54072,9 +54078,9 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     let model = selectedModel;
     if (!model) {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available. Ensure you have an active GitHub Copilot subscription and VS Code is connected to the internet.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
       model = copilotModels[0];
     }
@@ -54158,11 +54164,11 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     prompt = this.redactPromptString(prompt);
     const model = this.resolveModel(payload?.model);
-    const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+    const copilotModels = await vscode4.lm.selectChatModels();
     if (!copilotModels || copilotModels.length === 0) {
-      throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+      throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
     }
-    const selectedModel = this.findCopilotModel(model, copilotModels);
+    const selectedModel = this.findModel(model, copilotModels);
     if (!selectedModel) {
       throw new ApiError(404, `Model "${model}" not found.Available models: ${copilotModels.map((m) => m.id).join(", ")} `, "invalid_request_error", "model_not_found");
     }
@@ -54171,7 +54177,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     let promptTokens = 0;
     let completionTokens = 0;
     try {
-      const copilotModels2 = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels2 = await vscode4.lm.selectChatModels();
       if (copilotModels2 && copilotModels2.length > 0) {
         const lmModel = copilotModels2[0];
         const inputStr = prompt;
@@ -54224,11 +54230,11 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     });
     let totalContent = "";
     try {
-      const copilotModels = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
-        throw new ApiError(503, "No Copilot language model available.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
-      const selectedModel = this.findCopilotModel(model, copilotModels);
+      const selectedModel = this.findModel(model, copilotModels);
       if (!selectedModel) {
         throw new ApiError(404, `Model "${model}" not found.`, "invalid_request_error", "model_not_found");
       }
@@ -54414,9 +54420,9 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
   async invokeCopilot(prompt, selectedModel) {
     let model = selectedModel;
     if (!model) {
-      const models = await vscode4.lm.selectChatModels({ vendor: "copilot" });
+      const models = await vscode4.lm.selectChatModels();
       if (!models || models.length === 0) {
-        throw new ApiError(503, "No Copilot language model available. Make sure GitHub Copilot is installed and signed in.", "service_unavailable", "copilot_unavailable");
+        throw new ApiError(503, "No language model available. Ensure a language model provider (e.g. GitHub Copilot) is installed and signed in.", "service_unavailable", "no_models_available");
       }
       model = models[0];
     }
@@ -54563,10 +54569,11 @@ ${text} `;
     return this.config.defaultModel;
   }
   /**
-   * Find a Copilot model matching the requested model ID.
+   * Find a language model matching the requested model ID.
+   * Searches across ALL registered VS Code language model providers.
    * STRICT MODE: Exact match only. Returns null if not found.
    */
-  findCopilotModel(requestedModel, availableModels) {
+  findModel(requestedModel, availableModels) {
     if (!availableModels || availableModels.length === 0) {
       return null;
     }
@@ -59347,10 +59354,10 @@ Server is stopped. Click to start or manage.
         }
       });
     } else if (selection.label.includes("Switch Model")) {
-      const copilotModels = await vscode7.lm.selectChatModels({ vendor: "copilot" });
-      const modelItems = copilotModels.map((m) => ({
+      const allModels = await vscode7.lm.selectChatModels();
+      const modelItems = allModels.map((m) => ({
         label: m.id === status.config.defaultModel ? `$(check) ${m.id}` : `     ${m.id}`,
-        description: m.id === status.config.defaultModel ? "(current)" : "",
+        description: m.id === status.config.defaultModel ? `(current) \xB7 ${m.vendor}` : m.vendor,
         modelId: m.id
       }));
       const modelSelection = await vscode7.window.showQuickPick(modelItems, { placeHolder: "Select default model", title: "Switch Default Model" });
