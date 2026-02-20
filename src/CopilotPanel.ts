@@ -271,62 +271,107 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <title>API Usage Guide</title>
     <style>
+        /* Wiki UI Variables */
+        :root {
+            --ui-bg-base: var(--vscode-editor-background);
+            --ui-bg-card: color-mix(in srgb, var(--vscode-editorWidget-background) 50%, var(--vscode-editor-background));
+            --ui-border-soft: color-mix(in srgb, var(--vscode-widget-border) 60%, transparent);
+            --ui-border-hover: var(--vscode-focusBorder);
+            --ui-text-primary: var(--vscode-foreground);
+            --ui-text-muted: var(--vscode-descriptionForeground);
+            --ui-accent: var(--vscode-button-background);
+            --ui-accent-hover: var(--vscode-button-hoverBackground);
+            
+            --ease-smooth: cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
         body {
-            font-family: var(--vscode-font-family);
-            padding: 20px;
-            color: var(--vscode-foreground);
-            background: var(--vscode-editor-background);
+            margin: 0; padding: 0; min-height: 100vh;
+            background-color: var(--ui-bg-base);
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ui-text-primary);
+            font-size: 14px;
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            max-width: 900px; /* Constrain width for readability */
+            margin: 0 auto;
+            padding: 40px 32px 64px;
         }
-        h1 { margin-top: 0; }
-        .muted { opacity: 0.7; }
+
+        h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; font-weight: 700; color: var(--ui-text-primary); margin-bottom: 8px; }
+        h4 { color: var(--vscode-textLink-foreground); margin: 32px 0 16px; font-size: 16px; font-weight: 600; }
+        
+        .muted { color: var(--ui-text-muted); font-size: 14px; }
+        a { color: var(--vscode-textLink-foreground); text-decoration: none; font-weight: 500; transition: color 0.1s; }
+        a:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+
+        /* Modern Tabs (Pill style) */
+        #wiki-tabs {
+            display: flex; gap: 8px; margin: 32px 0 24px; flex-wrap: wrap;
+            padding-bottom: 16px; border-bottom: 1px solid var(--ui-border-soft);
+        }
         .wiki-tab {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px 8px 0 0;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            transition: all 0.2s;
-        }
-        .wiki-tab.active {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            padding: 8px 16px; border: 1px solid var(--ui-border-soft); border-radius: 999px;
+            cursor: pointer; font-size: 13px; font-weight: 600;
+            background: color-mix(in srgb, var(--ui-bg-card) 50%, transparent);
+            color: var(--ui-text-primary);
+            transition: all 0.2s var(--ease-smooth);
+            font-family: inherit;
         }
         .wiki-tab:hover {
-            opacity: 0.9;
+            border-color: var(--ui-border-hover);
+            transform: translateY(-1px);
         }
+        .wiki-tab.active {
+            background: var(--ui-accent);
+            color: var(--vscode-button-foreground);
+            border-color: transparent;
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-accent) 30%, transparent);
+        }
+
+        /* Content Area */
         .wiki-panel {
-            display: none;
+            display: none; animation: slide-up 0.3s var(--ease-smooth);
         }
-        .wiki-panel.active {
-            display: block;
+        .wiki-panel.active { display: block; }
+        
+        @keyframes slide-up {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Code Blocks */
         pre {
-            background: var(--vscode-textBlockQuote-background);
-            padding: 14px;
-            border-radius: 8px;
-            overflow-x: auto;
-            font-size: 12px;
+            background: #000; color: #d4d4d4;
+            padding: 20px; border-radius: 12px;
+            overflow-x: auto; font-size: 13px;
             font-family: var(--vscode-editor-font-family);
-        }
-        h4 {
-            color: var(--vscode-textLink-foreground);
-            margin-top: 24px;
-        }
-        .tool-card {
-            background: var(--vscode-textBlockQuote-background);
-            padding: 14px;
-            border-radius: 8px;
-            border-left: 3px solid var(--vscode-textLink-foreground);
-            margin-bottom: 12px;
+            border: 1px solid #333;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+            line-height: 1.5; margin: 0 0 24px;
         }
         code {
-            font-size: 12px;
-            color: var(--vscode-textPreformat-foreground);
-            font-weight: 600;
+            font-size: 13px; color: var(--vscode-textPreformat-foreground); font-weight: 600;
+            background: color-mix(in srgb, var(--vscode-textPreformat-foreground) 10%, transparent);
+            padding: 2px 6px; border-radius: 4px; font-family: var(--vscode-editor-font-family);
+        }
+        pre code { background: transparent; padding: 0; font-weight: 400; }
+
+        /* Tool Cards */
+        .tool-card {
+            background: var(--ui-bg-card);
+            padding: 20px; border-radius: 12px;
+            border-left: 4px solid var(--vscode-textLink-foreground);
+            border-top: 1px solid var(--ui-border-soft);
+            border-right: 1px solid var(--ui-border-soft);
+            border-bottom: 1px solid var(--ui-border-soft);
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition: transform 0.2s var(--ease-smooth), box-shadow 0.2s;
+        }
+        .tool-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
         }
     </style>
 </head>
@@ -334,14 +379,14 @@ export class CopilotPanel implements vscode.WebviewViewProvider {
     <h1>📚 API Usage Guide</h1>
     <p class="muted">Complete reference for connecting to the Copilot API Gateway from various languages.</p>
 
-    <div id="wiki-tabs" style="display: flex; gap: 4px; margin: 20px 0 16px; flex-wrap: wrap;">
+    <div id="wiki-tabs">
         <button class="wiki-tab active" data-tab="python">🐍 Python</button>
-        <button class="wiki-tab" data-tab="javascript">📜 JavaScript</button>
+        <button class="wiki-tab" data-tab="javascript">📜 Node.js</button>
         <button class="wiki-tab" data-tab="curl">🔧 cURL</button>
         <button class="wiki-tab" data-tab="mcp">🔌 MCP Tools</button>
     </div>
 
-    <div id="wiki-content" style="background: var(--vscode-sideBar-background); border-radius: 0 8px 8px 8px; padding: 20px;">
+    <div id="wiki-content">
         <!-- Python Tab -->
         <div class="wiki-panel active" data-panel="python">
             <h4 style="margin-top: 0;">📦 Installation</h4>
@@ -473,12 +518,12 @@ for await (const chunk of stream) {
   }
 }</pre>
 
-            <h4>2. Usage</h4>
             <p>Once configured, restart the server. Tools provided by these servers (e.g., <code>read_file</code>, <code>query_database</code>) will be automatically available to the API.</p>
             <p>You can then use them in your API requests by enabling tool use, or letting your agent framework discover them.</p>
 
-            <div class="tool-card">
-                <strong>💡 Pro Tip:</strong> Use the "Tools" tab in the dashboard (coming soon) to verify connected servers and see available tools.
+            <div class="tool-card" style="border-left-color: var(--ui-accent);">
+                <strong style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 18px;">💡</span> Pro Tip:</strong>
+                <div style="margin-top: 8px; opacity: 0.8; font-size: 13px;">Use the "Tools" tab in the dashboard (coming soon) to verify connected servers and see available tools.</div>
             </div>
         </div>
     </div>
@@ -840,122 +885,192 @@ for await (const chunk of stream) {
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { margin: 0; padding: 0; font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-sideBar-background); }
-        .section { padding: 12px; border-bottom: 1px solid var(--vscode-widget-border); }
+        /* Sidebar Modern UI Variables */
+        :root {
+            --ui-bg-base: var(--vscode-sideBar-background);
+            --ui-bg-card: var(--vscode-editor-background);
+            --ui-border-soft: color-mix(in srgb, var(--vscode-widget-border) 50%, transparent);
+            --ui-border-hover: var(--vscode-focusBorder);
+            --ui-text-primary: var(--vscode-foreground);
+            --ui-text-muted: var(--vscode-descriptionForeground);
+            --ui-accent: var(--vscode-button-background);
+            --ui-accent-hover: var(--vscode-button-hoverBackground);
+        }
+
+        body { 
+            margin: 0; padding: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ui-text-primary); 
+            background: var(--ui-bg-base); 
+            font-size: 13px;
+        }
+        
+        .section { padding: 16px; border-bottom: 1px solid var(--ui-border-soft); }
         .section:last-child { border-bottom: none; }
-        .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-        .status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; background: ${statusColor}; box-shadow: 0 0 6px ${statusColor}; transition: all 0.3s ease; }
+        .section-title { 
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; 
+            color: var(--ui-text-muted); font-weight: 700; 
+            margin-bottom: 12px; display: flex; align-items: center; gap: 8px; 
+        }
+        
+        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .dot { 
+            width: 10px; height: 10px; border-radius: 50%; 
+            background: ${statusColor}; 
+            box-shadow: 0 0 0 3px color-mix(in srgb, ${statusColor} 20%, transparent); 
+            transition: all 0.3s ease; 
+        }
         ${isRunning ? '.dot { animation: pulse-dot 2s ease-in-out infinite; }' : ''}
-        @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 6px ${statusColor}; } 50% { box-shadow: 0 0 14px ${statusColor}, 0 0 20px ${statusColor}; } }
-        .url { font-family: var(--vscode-editor-font-family); font-size: 10px; opacity: 0.7; word-break: break-all; }
-        .uptime { font-size: 10px; opacity: 0.6; margin-top: 4px; font-family: var(--vscode-editor-font-family); }
-        .model-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-        .model-label { font-size: 10px; opacity: 0.6; }
-        .model-name { font-size: 11px; font-weight: 600; color: var(--vscode-textLink-foreground); cursor: pointer; }
-        .model-name:hover { text-decoration: underline; }
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-        .stat-card { background: var(--vscode-editor-background); border-radius: 6px; padding: 8px 10px; text-align: center; border: 1px solid var(--vscode-widget-border); transition: border-color 0.15s ease; }
-        .stat-card:hover { border-color: var(--vscode-focusBorder); }
-        .stat-value { font-size: 18px; font-weight: 700; color: var(--vscode-foreground); }
-        .stat-label { font-size: 9px; text-transform: uppercase; opacity: 0.6; margin-top: 2px; }
-        .chart-container { background: var(--vscode-editor-background); border-radius: 8px; padding: 12px; border: 1px solid var(--vscode-widget-border); }
-        .chart-title { font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.9; }
-        button { width: 100%; padding: 8px 12px; margin-bottom: 6px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-family: var(--vscode-font-family); font-weight: 500; font-size: 12px; transition: all 0.15s ease; }
-        button:hover { background: var(--vscode-button-hoverBackground); transform: translateY(-1px); }
+        @keyframes pulse-dot { 
+            0% { box-shadow: 0 0 0 0 color-mix(in srgb, ${statusColor} 40%, transparent); } 
+            70% { box-shadow: 0 0 0 8px transparent; }
+            100% { box-shadow: 0 0 0 0 transparent; } 
+        }
+        
+        .url { font-family: var(--vscode-editor-font-family); font-size: 11px; color: var(--ui-text-muted); word-break: break-all; }
+        .uptime { font-size: 11px; color: var(--ui-text-muted); margin-top: 6px; font-family: var(--vscode-editor-font-family); }
+        
+        .model-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+        .model-label { font-size: 11px; color: var(--ui-text-muted); }
+        .model-name { font-size: 11px; font-weight: 600; color: var(--vscode-textLink-foreground); cursor: pointer; transition: color 0.1s; }
+        .model-name:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground); }
+        
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+        .stat-card { 
+            background: var(--ui-bg-card); border-radius: 8px; padding: 10px 12px; 
+            text-align: center; border: 1px solid var(--ui-border-soft); 
+            transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; 
+        }
+        .stat-card:hover { 
+            border-color: var(--ui-border-hover); 
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        }
+        
+        .stat-value { font-size: 18px; font-weight: 700; color: var(--ui-text-primary); }
+        .stat-label { font-size: 9px; text-transform: uppercase; color: var(--ui-text-muted); margin-top: 4px; letter-spacing: 0.05em; font-weight: 600; }
+        
+        .chart-container { 
+            background: var(--ui-bg-card); border-radius: 8px; padding: 16px; 
+            border: 1px solid var(--ui-border-soft); box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);
+        }
+        .chart-title { font-size: 11px; font-weight: 600; margin-bottom: 12px; color: var(--ui-text-muted); }
+        
+        button { 
+            width: 100%; padding: 8px 12px; margin-bottom: 8px; 
+            background: var(--ui-accent); color: var(--vscode-button-foreground); 
+            border: none; border-radius: 6px; cursor: pointer; 
+            font-family: inherit; font-weight: 600; font-size: 12px; 
+            transition: all 0.2s ease; 
+        }
+        button:hover { background: var(--ui-accent-hover); transform: translateY(-1px); }
         button:active { transform: scale(0.98); }
-        button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-        button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
-        .btn-row { display: flex; gap: 6px; margin-bottom: 6px; }
-        .btn-row button { flex: 1; padding: 6px 8px; font-size: 11px; margin-bottom: 0; }
-        .copilot-status { font-size: 10px; opacity: 0.7; display: flex; align-items: center; gap: 5px; margin-top: 4px; }
-        .copilot-dot { width: 6px; height: 6px; border-radius: 50%; }
+        button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid var(--ui-border-soft); }
+        button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); border-color: var(--ui-border-hover); }
+        
+        .btn-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .btn-row button { flex: 1; margin-bottom: 0; }
+        
+        .copilot-status { font-size: 11px; color: var(--ui-text-muted); display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+        .copilot-dot { width: 8px; height: 8px; border-radius: 50%; }
 
         /* Live Feed */
-        .feed-container { background: var(--vscode-editor-background); border-radius: 6px; border: 1px solid var(--vscode-widget-border); overflow: hidden; }
-        .feed-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 10px; font-family: var(--vscode-editor-font-family); border-bottom: 1px solid var(--vscode-widget-border); transition: background 0.1s ease; }
+        .feed-container { 
+            background: #000; border-radius: 8px; border: 1px solid var(--ui-border-soft); 
+            overflow: hidden; 
+        }
+        .feed-item { 
+            display: flex; align-items: center; gap: 8px; padding: 6px 10px; 
+            font-size: 11px; font-family: var(--vscode-editor-font-family); 
+            border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.1s ease; 
+        }
         .feed-item:last-child { border-bottom: none; }
-        .feed-item:hover { background: var(--vscode-list-hoverBackground); }
+        .feed-item:hover { background: rgba(255,255,255,0.05); }
         .feed-item.new { animation: feed-flash 0.5s ease; }
-        @keyframes feed-flash { from { background: var(--vscode-editor-selectionBackground); } to { background: transparent; } }
-        .feed-time { opacity: 0.5; min-width: 52px; }
-        .feed-method { font-weight: 700; min-width: 30px; }
-        .feed-path { flex: 1; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .feed-status { font-weight: 600; min-width: 24px; text-align: right; }
-        .feed-latency { opacity: 0.5; min-width: 36px; text-align: right; }
-        .feed-empty { padding: 12px; text-align: center; font-size: 11px; opacity: 0.5; }
+        @keyframes feed-flash { 
+            from { background: rgba(255,255,255,0.1); } 
+            to { background: transparent; } 
+        }
+        .feed-time { color: #858585; min-width: 55px; }
+        .feed-method { font-weight: 700; min-width: 35px; color: #569cd6 !important; }
+        .feed-path { flex: 1; color: #ce9178; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .feed-status { font-weight: 600; min-width: 25px; text-align: right; }
+        .feed-latency { color: #858585; min-width: 40px; text-align: right; }
+        .feed-empty { padding: 16px; text-align: center; font-size: 11px; color: #858585; }
 
         /* Config Toggles */
-        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
-        .toggle-label { font-size: 11px; display: flex; align-items: center; gap: 6px; }
-        .toggle-indicator { width: 8px; height: 8px; border-radius: 50%; }
-        .toggle-on { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 4px var(--vscode-testing-iconPassed); }
-        .toggle-off { background: var(--vscode-descriptionForeground); opacity: 0.4; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .toggle-label { font-size: 12px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+        .toggle-indicator { width: 10px; height: 10px; border-radius: 50%; }
+        .toggle-on { background: var(--vscode-testing-iconPassed); box-shadow: 0 0 6px color-mix(in srgb, var(--vscode-testing-iconPassed) 40%, transparent); }
+        .toggle-off { background: var(--ui-text-muted); opacity: 0.3; }
     </style>
 </head>
 <body>
     <!-- Status Section -->
     <div class="section">
-        <div class="section-title">Server Status</div>
+        <div class="section-title">☁️ Server Status</div>
         <div class="status-row">
             <div class="dot"></div>
-            <strong>${statusText}</strong>
+            <strong style="font-size: 15px;">${statusText}</strong>
         </div>
         <div class="url">${url}</div>
         <div class="model-row">
-            <span class="model-label">Model:</span>
+            <span class="model-label">Global Model:</span>
             <span class="model-name" id="model-name" title="Click to switch model">${status.config.defaultModel || 'gpt-4o'}</span>
         </div>
         ${isRunning ? `<div class="uptime" id="uptime-display">⏱ Uptime: calculating...</div>` : ''}
-        <div class="copilot-status">
+        <div class="copilot-status" style="margin-top: 10px; padding: 6px; background: color-mix(in srgb, var(--vscode-editor-background) 50%, transparent); border-radius: 6px; border: 1px solid var(--ui-border-soft);">
             <div class="copilot-dot" style="background: ${status.copilot.ready ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editorWarning-foreground)'}"></div>
-            Copilot: ${status.copilot.ready ? 'Ready' : (status.copilot.signedIn ? 'Checking' : 'Sign-in Needed')}
+            <span>Copilot: <strong style="color: var(--ui-text-primary);">${status.copilot.ready ? 'Ready' : (status.copilot.signedIn ? 'Checking...' : 'Sign-in Needed')}</strong></span>
         </div>
     </div>
 
     <!-- Quick Copy Section -->
     <div class="section">
-        <div class="section-title">📋 Quick Copy</div>
+        <div class="section-title">📋 Connect</div>
         <div class="btn-row">
-            <button id="btn-copy-url" class="secondary" title="Copy API URL">URL</button>
-            <button id="btn-copy-curl" class="secondary" title="Copy curl command">curl</button>
-            <button id="btn-copy-python" class="secondary" title="Copy Python code">Python</button>
+            <button id="btn-copy-url" class="secondary" title="Copy API URL">API URL</button>
+            <button id="btn-copy-curl" class="secondary" title="Copy curl command">cURL</button>
+            <button id="btn-copy-python" class="secondary" title="Copy Python snippet">Python</button>
         </div>
     </div>
 
     <!-- Primary Actions -->
     <div class="section">
-        <div class="section-title">⚡ Actions</div>
-        <button id="btn-toggle">${isRunning ? '⏹ Stop Server' : '▶ Start Server'}</button>
-        <button id="btn-dashboard">📊 Open Dashboard ↗</button>
-        <button id="btn-swagger" class="secondary">📝 Swagger API</button>
+        <div class="section-title">⚡ Power Commands</div>
+        <button id="btn-toggle" style="height: 36px; font-size: 13px;">${isRunning ? '⏹ Stop Gateway' : '▶ Start Gateway'}</button>
+        <button id="btn-dashboard" style="height: 36px; font-size: 13px; background: color-mix(in srgb, var(--vscode-charts-blue) 80%, transparent); color: #fff;">📊 Open Full Dashboard</button>
+        <button id="btn-swagger" class="secondary" style="height: 32px;">📝 View Swagger Docs</button>
     </div>
 
     <!-- Live Stats Section -->
     <div class="section">
-        <div class="section-title">📊 Live Stats</div>
+        <div class="section-title">📈 Live Performance</div>
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-value" id="stat-rpm">${realtimeStats.requestsPerMinute}</div>
                 <div class="stat-label">Req/Min</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 10px; opacity: 0.6;">ms</span></div>
-                <div class="stat-label">Latency</div>
+                <div class="stat-value" id="stat-latency">${realtimeStats.avgLatencyMs}<span style="font-size: 11px; opacity: 0.5;">ms</span></div>
+                <div class="stat-label">Avg Latency</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="stat-total" style="font-size: 14px;">${this.formatNumber(stats.totalRequests)}</div>
-                <div class="stat-label">Total Reqs</div>
+                <div class="stat-value" id="stat-total" style="font-size: 16px;">${this.formatNumber(stats.totalRequests)}</div>
+                <div class="stat-label">Total Traffic</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="stat-errors" style="font-size: 14px; color: ${(realtimeStats.errorRate || 0) > 0 ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconPassed)'};">${realtimeStats.errorRate || 0}%</div>
+                <div class="stat-value" id="stat-errors" style="font-size: 16px; color: ${(realtimeStats.errorRate || 0) > 0 ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconPassed)'};">${realtimeStats.errorRate || 0}%</div>
                 <div class="stat-label">Error Rate</div>
             </div>
         </div>
 
         <div class="chart-container">
-            <div class="chart-title">Requests (Last 7 Days)</div>
-            <svg width="${chartWidth}" height="${chartHeight + 16}" style="display: block; margin: 0 auto;">
+            <div class="chart-title" style="display: flex; justify-content: space-between;">
+                <span>Volume (7 Days)</span>
+            </div>
+            <svg width="${chartWidth}" height="${chartHeight + 16}" style="display: block; margin: 0 auto; overflow: visible;">
                 ${barsHtml}
             </svg>
         </div>
@@ -963,41 +1078,26 @@ for await (const chunk of stream) {
 
     <!-- Live Request Feed -->
     <div class="section">
-        <div class="section-title">⚡ Live Feed</div>
+        <div class="section-title">⚡ Live Traffic Feed</div>
         <div class="feed-container" id="feed-container">
-            ${feedHtml || '<div class="feed-empty">No requests yet</div>'}
-        </div>
-    </div>
-
-    <!-- Token Usage Section -->
-    <div class="section">
-        <div class="section-title">🎫 Token Usage</div>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value" id="stat-tokens-in" style="font-size: 14px; color: var(--vscode-charts-green);">${this.formatNumber(stats.totalTokensIn)}</div>
-                <div class="stat-label">Tokens In</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="stat-tokens-out" style="font-size: 14px; color: var(--vscode-charts-orange);">${this.formatNumber(stats.totalTokensOut)}</div>
-                <div class="stat-label">Tokens Out</div>
-            </div>
+            ${feedHtml || '<div class="feed-empty">Listening for requests...</div>'}
         </div>
     </div>
 
     <!-- Config Status -->
     <div class="section">
-        <div class="section-title">🔧 Config</div>
+        <div class="section-title">🔧 Environment</div>
         <div class="toggle-row">
             <span class="toggle-label"><span class="toggle-indicator ${hasAuth ? 'toggle-on' : 'toggle-off'}"></span> Authentication</span>
-            <span style="font-size: 10px; opacity: 0.6;">${hasAuth ? '🔒 On' : '🔓 Off'}</span>
+            <span style="font-size: 11px; color: var(--ui-text-muted); font-weight: 500;">${hasAuth ? '🔒 Secure' : '🔓 Open'}</span>
         </div>
         <div class="toggle-row">
-            <span class="toggle-label"><span class="toggle-indicator ${isHttps ? 'toggle-on' : 'toggle-off'}"></span> HTTPS</span>
-            <span style="font-size: 10px; opacity: 0.6;">${isHttps ? '✅ On' : 'Off'}</span>
+            <span class="toggle-label"><span class="toggle-indicator ${isHttps ? 'toggle-on' : 'toggle-off'}"></span> Encrypted (HTTPS)</span>
+            <span style="font-size: 11px; color: var(--ui-text-muted); font-weight: 500;">${isHttps ? '✅ Active' : 'Off'}</span>
         </div>
         <div class="toggle-row">
-            <span class="toggle-label"><span class="toggle-indicator ${status.tunnel?.running ? 'toggle-on' : 'toggle-off'}"></span> Tunnel</span>
-            <span style="font-size: 10px; opacity: 0.6;">${status.tunnel?.running ? '🌐 Active' : 'Off'}</span>
+            <span class="toggle-label"><span class="toggle-indicator ${status.tunnel?.running ? 'toggle-on' : 'toggle-off'}"></span> Public Tunnel</span>
+            <span style="font-size: 11px; color: var(--ui-text-muted); font-weight: 500;">${status.tunnel?.running ? '🌐 Live' : 'Off'}</span>
         </div>
     </div>
 
@@ -1082,15 +1182,15 @@ print(response.choices[0].message.content)\`;
         }
 
         // Button handlers
-        document.getElementById('btn-copy-url').addEventListener('click', (e) => copyWithFeedback(e.target, serverUrl));
-        document.getElementById('btn-copy-curl').addEventListener('click', (e) => copyWithFeedback(e.target, curlCommand));
-        document.getElementById('btn-copy-python').addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
-        document.getElementById('btn-dashboard').addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
-        document.getElementById('btn-toggle').addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' }));
-        document.getElementById('btn-edit-system-prompt').addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
-        document.getElementById('btn-swagger').addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
-        document.getElementById('btn-wiki').addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
-        document.getElementById('model-name').addEventListener('click', () => vscode.postMessage({ type: 'switchModel' }));
+        document.getElementById('btn-copy-url')?.addEventListener('click', (e) => copyWithFeedback(e.target, serverUrl));
+        document.getElementById('btn-copy-curl')?.addEventListener('click', (e) => copyWithFeedback(e.target, curlCommand));
+        document.getElementById('btn-copy-python')?.addEventListener('click', (e) => copyWithFeedback(e.target, pythonCode));
+        document.getElementById('btn-dashboard')?.addEventListener('click', () => vscode.postMessage({ type: 'openDashboard' }));
+        document.getElementById('btn-toggle')?.addEventListener('click', () => vscode.postMessage({ type: '${isRunning ? 'stopServer' : 'startServer'}' }));
+        document.getElementById('btn-edit-system-prompt')?.addEventListener('click', () => vscode.postMessage({ type: 'editSystemPrompt' }));
+        document.getElementById('btn-swagger')?.addEventListener('click', () => vscode.postMessage({ type: 'openSwagger' }));
+        document.getElementById('btn-wiki')?.addEventListener('click', () => vscode.postMessage({ type: 'openWiki' }));
+        document.getElementById('model-name')?.addEventListener('click', () => vscode.postMessage({ type: 'switchModel' }));
         const btnDocs = document.getElementById('btn-docs');
         if (btnDocs) {
             btnDocs.addEventListener('click', () => vscode.postMessage({ type: 'openUrl', value: 'https://notes.suhaib.in/docs/vscode/extensions/github-copilot-api-gateway/' }));
@@ -1257,223 +1357,291 @@ print(response.choices[0].message.content)\`;
     <!-- Removed Chart.js for reliability -->
     <style>
         :root {
-            --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+            /* Animation timings */
+            --ease-smooth: cubic-bezier(0.25, 1, 0.5, 1);
             --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            color-scheme: var(--vscode-color-scheme);
+            /* Base Colors (Adaptive via VS Code) */
+            --ui-bg-base: var(--vscode-editor-background);
+            --ui-bg-card: var(--vscode-editorWidget-background);
+            --ui-border-soft: color-mix(in srgb, var(--vscode-widget-border) 60%, transparent);
+            --ui-border-hover: var(--vscode-focusBorder);
+            --ui-text-primary: var(--vscode-foreground);
+            --ui-text-muted: var(--vscode-descriptionForeground);
+            --ui-accent: var(--vscode-button-background);
+            --ui-accent-hover: var(--vscode-button-hoverBackground);
+            
+            /* Enhanced Card Shadows */
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+            --shadow-lg: 0 12px 32px rgba(0,0,0,0.15);
         }
+
         body {
             margin: 0; padding: 0; min-height: 100vh;
-            background-color: var(--vscode-editor-background);
-            font-family: var(--vscode-font-family);
-            color: var(--vscode-foreground);
-            font-size: 13px; /* Enhanced legibility */
-            line-height: 1.5;
+            background-color: var(--ui-bg-base);
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ui-text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
         
         /* Layout */
         .page {
-            max-width: 1200px;
+            max-width: 1100px;
             margin: 0 auto;
-            padding: 40px 32px 64px; /* More breathing room */
+            padding: 48px 32px 80px;
             display: flex;
             flex-direction: column;
-            gap: 24px;
+            gap: 32px;
+            animation: fade-in 0.4s var(--ease-smooth);
         }
         
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* Typography */
-        h1 { margin: 0; font-size: 28px; letter-spacing: -0.5px; font-weight: 600; color: var(--vscode-foreground); }
-        h3 { margin-top: 0; margin-bottom: 16px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; opacity: 0.9; color: var(--vscode-foreground); }
-        h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--vscode-foreground); }
-        p { margin: 0; font-size: 13px; color: var(--vscode-descriptionForeground); line-height: 1.5; }
+        h1 { margin: 0; font-size: 32px; letter-spacing: -0.03em; font-weight: 700; color: var(--ui-text-primary); }
+        h3 { margin-top: 0; margin-bottom: 20px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; color: var(--ui-text-muted); }
+        h4 { margin: 0; font-size: 16px; font-weight: 600; color: var(--ui-text-primary); }
+        p { margin: 0; font-size: 14px; color: var(--ui-text-muted); line-height: 1.6; }
         
-        .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; padding-bottom: 16px; }
-        .hero p { margin-top: 8px; font-size: 14px; max-width: 600px; }
+        .hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 40px; border-bottom: 1px solid var(--ui-border-soft); padding-bottom: 32px; margin-bottom: 8px; }
+        .hero p { margin-top: 12px; font-size: 16px; max-width: 600px; }
         
         .badge {
-            display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+            display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
             border-radius: 999px;
-            background: var(--vscode-badge-background);
+            background: color-mix(in srgb, var(--vscode-badge-background) 20%, transparent);
             color: var(--vscode-badge-foreground);
-            font-size: 11px; font-weight: 600;
+            font-size: 12px; font-weight: 600;
+            border: 1px solid color-mix(in srgb, var(--vscode-badge-foreground) 30%, transparent);
         }
 
         /* Cards */
         .card {
-            background-color: var(--vscode-editorWidget-background);
-            border: 1px solid var(--vscode-widget-border);
-            border-radius: 12px;
-            padding: 24px; /* increased padding */
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-            transition: transform 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth), border-color 0.2s var(--ease-smooth);
+            background-color: var(--ui-bg-card);
+            border: 1px solid var(--ui-border-soft);
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.3s var(--ease-spring), box-shadow 0.3s var(--ease-smooth), border-color 0.3s var(--ease-smooth);
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
         }
         .card:hover {
-            border-color: var(--vscode-focusBorder);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            transform: translateY(-1px);
+            border-color: var(--ui-border-hover);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
         }
         .card.full-width { grid-column: 1 / -1; }
 
         .stat-value {
-            font-size: 24px;
-            font-weight: 600;
-            margin-top: 4px;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-top: 8px;
+            line-height: 1.1;
         }
         .stat-sub {
-            font-size: 12px;
-            opacity: 0.6;
-            margin-top: 4px;
+            font-size: 13px;
+            opacity: 0.7;
+            margin-top: 8px;
+            font-weight: 500;
         }
         .money-saved {
-            color: var(--vscode-testing-iconPassed); /* Green-ish usually */
+            color: var(--vscode-testing-iconPassed);
+            filter: drop-shadow(0 0 8px color-mix(in srgb, var(--vscode-testing-iconPassed) 40%, transparent));
         }
         
         /* Grid */
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
-        .info-grid { display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 13px; align-items: center; }
-        .label { color: var(--vscode-descriptionForeground); font-weight: 500; }
-        .value { color: var(--vscode-foreground); font-family: var(--vscode-editor-font-family); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; }
+        .info-grid { display: grid; grid-template-columns: 160px 1fr; gap: 16px; font-size: 14px; align-items: center; }
+        .label { color: var(--ui-text-muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .value { color: var(--ui-text-primary); font-family: var(--vscode-editor-font-family); font-size: 14px; }
 
         /* Actions & Buttons */
-        .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+        .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
         
         button {
             display: inline-flex; justify-content: center; align-items: center; gap: 8px;
-            width: 100%; height: 32px; /* Touch target */
-            padding: 0 16px;
-            background-color: var(--vscode-button-background);
+            height: 40px; padding: 0 20px;
+            background-color: var(--ui-accent);
             color: var(--vscode-button-foreground);
-            border: 1px solid transparent;
-            border-radius: 999px; /* Pill shape */
+            border: none;
+            border-radius: 8px;
             cursor: pointer;
-            font-family: inherit; font-size: 13px; font-weight: 500;
+            font-family: inherit; font-size: 14px; font-weight: 600;
             transition: all 0.2s var(--ease-smooth);
+            box-shadow: 0 2px 4px color-mix(in srgb, var(--ui-accent) 20%, transparent);
         }
         button:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            background-color: var(--ui-accent-hover);
             transform: translateY(-1px);
+            box-shadow: 0 4px 8px color-mix(in srgb, var(--ui-accent) 30%, transparent);
         }
-        button:active { transform: scale(0.98); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        button:active { transform: scale(0.97); box-shadow: none; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
         
         button.secondary {
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--ui-border-soft);
+            box-shadow: none;
         }
         button.secondary:hover {
             background-color: var(--vscode-button-secondaryHoverBackground);
+            border-color: var(--ui-border-hover);
         }
 
         .section-title {
-            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+            font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--ui-text-muted);
+            margin-bottom: 16px; display: flex; align-items: center; gap: 12px;
         }
         .section-title::after {
-            content: ''; flex: 1; height: 1px; background-color: var(--vscode-widget-border); opacity: 0.5;
+            content: ''; flex: 1; height: 1px; background-color: var(--ui-border-soft);
         }
 
         /* Inputs */
         input[type="text"], input[type="number"], select {
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-widget-border);
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-family: inherit; font-size: 13px;
+            border: 1px solid var(--ui-border-soft);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-family: var(--vscode-editor-font-family); font-size: 13px;
+            transition: border-color 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth);
+            width: 100%; box-sizing: border-box;
         }
         input:focus, select:focus {
-            border-color: var(--vscode-focusBorder);
-            outline: 1px solid var(--vscode-focusBorder);
+            border-color: var(--ui-border-hover);
+            outline: none;
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-border-hover) 20%, transparent);
         }
         
-        .switch { position: relative; width: 40px; height: 22px; }
-        .switch input { display: none; }
+        /* Modern Toggle Switch */
+        .switch { position: relative; width: 44px; height: 24px; display: inline-block; }
+        .switch input { opacity: 0; width: 0; height: 0; }
         .slider {
             position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background: var(--vscode-input-background); border: 1px solid var(--vscode-widget-border);
-            transition: .2s var(--ease-smooth); border-radius: 999px;
+            background-color: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
+            transition: .3s var(--ease-smooth); border-radius: 24px;
+            border: 1px solid var(--ui-border-soft);
         }
         .slider:before {
-            position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px;
-            background-color: var(--vscode-foreground); transition: .2s var(--ease-spring); border-radius: 50%;
+            position: absolute; content: ""; height: 18px; width: 18px; left: 2px; bottom: 2px;
+            background-color: var(--vscode-foreground); transition: .3s var(--ease-spring); border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
-        input:checked + .slider { background: var(--vscode-testing-iconPassed); border-color: var(--vscode-testing-iconPassed); }
-        input:checked + .slider:before { transform: translateX(18px); background: var(--vscode-editor-background); }
+        input:checked + .slider { 
+            background-color: var(--vscode-testing-iconPassed); 
+            border-color: var(--vscode-testing-iconPassed);
+        }
+        input:checked + .slider:before { 
+            transform: translateX(20px); 
+            background-color: #fff; 
+        }
 
         /* Components */
         .toggle-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 16px; /* Larger touch target */
-            border-bottom: 1px solid var(--vscode-widget-border);
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--ui-border-soft);
             background: transparent;
+            transition: background 0.2s ease;
+            border-radius: 8px;
         }
+        .toggle-row:hover { background: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
         .toggle-row:last-child { border-bottom: none; }
 
-        .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .pill {
-            padding: 4px 12px; border-radius: 999px;
-            border: 1px solid var(--vscode-widget-border);
-            background: var(--vscode-editor-background);
-            color: var(--vscode-foreground);
-            cursor: pointer; font-size: 12px;
-            transition: all 0.15s ease;
+            padding: 6px 14px; border-radius: 999px;
+            border: 1px solid var(--ui-border-soft);
+            background: color-mix(in srgb, var(--ui-bg-card) 50%, transparent);
+            color: var(--ui-text-primary);
+            cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: all 0.2s var(--ease-smooth);
         }
-        .pill:hover { border-color: var(--vscode-testing-iconPassed); color: var(--vscode-testing-iconPassed); }
+        .pill:hover { 
+            border-color: var(--vscode-textLink-foreground); 
+            color: var(--vscode-textLink-foreground); 
+            background: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, transparent);
+            transform: translateY(-1px);
+        }
 
         /* Documentation Cards */
-        .docs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+        .docs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
         .doc-card {
-            border: 1px solid var(--vscode-widget-border);
-            border-radius: 12px; padding: 16px;
-            background: var(--vscode-editor-background); /* Flat background */
+            border: 1px solid var(--ui-border-soft);
+            border-radius: 12px; padding: 20px;
+            background: linear-gradient(180deg, color-mix(in srgb, var(--ui-bg-card) 60%, transparent), transparent);
             cursor: pointer;
-            transition: border-color 0.2s var(--ease-smooth), transform 0.2s var(--ease-smooth);
+            transition: all 0.3s var(--ease-smooth);
         }
-        .doc-card:hover { border-color: var(--vscode-focusBorder); transform: translateY(-2px); }
-        .doc-card h4 { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .doc-card p { opacity: 0.8; }
+        .doc-card:hover { 
+            border-color: var(--ui-border-hover); 
+            transform: translateY(-3px); 
+            box-shadow: var(--shadow-md);
+            background: var(--ui-bg-card);
+        }
+        .doc-card h4 { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 15px; }
+        .doc-card p { opacity: 0.8; font-size: 13px; line-height: 1.5; }
         .doc-card code {
-            font-family: var(--vscode-editor-font-family); font-size: 11px;
-            padding: 2px 6px; border-radius: 4px;
-            background: var(--vscode-textBlockQuote-background);
+            font-family: var(--vscode-editor-font-family); font-size: 12px;
+            padding: 3px 6px; border-radius: 4px;
+            background: color-mix(in srgb, var(--vscode-textPreformat-foreground) 15%, transparent);
             color: var(--vscode-textPreformat-foreground);
         }
 
         /* Status & Logs */
         .status-dot {
-            width: 10px; height: 10px; border-radius: 50%;
+            width: 12px; height: 12px; border-radius: 50%;
             background-color: ${statusColor};
-            box-shadow: 0 0 0 4px color-mix(in srgb, ${statusColor} 20%, transparent); /* Soft glow ring */
+            box-shadow: 0 0 0 3px color-mix(in srgb, ${statusColor} 20%, transparent);
         }
         
         .log-container {
-            background: var(--vscode-editor-background); /* Consistent background */
+            background: #000; /* Deep terminal feel */
+            color: #d4d4d4;
             font-family: var(--vscode-editor-font-family);
             font-size: 12px; line-height: 1.6;
-            padding: 16px; border-radius: 8px;
-            height: 350px; overflow-y: auto;
-            border: 1px solid var(--vscode-widget-border);
-            margin-top: 16px;
+            padding: 20px; border-radius: 12px;
+            height: 380px; overflow-y: auto;
+            border: 1px solid #333;
+            margin-top: 20px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
         }
-        .log-line { display: flex; gap: 12px; padding: 2px 0; border-bottom: 1px solid transparent; }
-        .log-line:hover { background: var(--vscode-list-hoverBackground); }
-        .log-time { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 80px; }
-        .log-method { font-weight: 600; color: var(--vscode-textLink-foreground); min-width: 50px; }
-        .log-path { color: var(--vscode-textPreformat-foreground); flex: 1; word-break: break-all; }
-        .log-status.success { color: var(--vscode-testing-iconPassed); }
-        .log-status.error { color: var(--vscode-testing-iconFailed); }
-        .log-latency { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 60px; text-align: right; }
+        .log-line { display: flex; gap: 16px; padding: 4px 6px; border-radius: 4px; transition: background 0.1s; }
+        .log-line:hover { background: rgba(255,255,255,0.05); }
+        .log-time { color: #858585; font-size: 11px; min-width: 85px; font-weight: 500; }
+        .log-method { font-weight: 600; color: #569cd6; min-width: 55px; }
+        .log-path { color: #ce9178; flex: 1; word-break: break-all; }
+        .log-status.success { color: #4ec9b0; font-weight: 600; }
+        .log-status.error { color: #f14c4c; font-weight: 600; }
+        .log-latency { color: #858585; font-size: 11px; min-width: 65px; text-align: right; }
 
-        .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
-        a { color: var(--vscode-textLink-foreground); text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        .muted { color: var(--ui-text-muted); font-size: 13px; }
+        a { color: var(--vscode-textLink-foreground); text-decoration: none; font-weight: 500; transition: color 0.1s; }
+        a:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
 
         /* Animations */
-        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.3; } }
-        .log-line.pending { opacity: 0.7; animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse-ring { 
+            0% { box-shadow: 0 0 0 0 color-mix(in srgb, ${statusColor} 40%, transparent); } 
+            70% { box-shadow: 0 0 0 10px transparent; }
+            100% { box-shadow: 0 0 0 0 transparent; } 
+        }
+        .status-dot { animation: ${isRunning ? 'pulse-ring 2s infinite' : 'none'}; }
         
-        .spinner { animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pending-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.3; } }
+        .log-line.pending { animation: pending-pulse 2s ease-in-out infinite; }
 
         /* Modern Sidebar Design - Constant Dark Theme */
         @media (max-width: 600px) {
@@ -1632,7 +1800,10 @@ print(response.choices[0].message.content)\`;
             <div>
                 <h1>Copilot API Dashboard</h1>
                 <p>Monitor and control your local Copilot API Gateway.</p>
-                <div style="margin-top: 8px; font-size: 13px; opacity: 0.9; font-family: var(--vscode-editor-font-family); display: flex; align-items: center; gap: 8px;">
+                <div style="margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; background: color-mix(in srgb, var(--vscode-charts-purple) 15%, transparent); color: var(--vscode-charts-purple); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--vscode-charts-purple) 30%, transparent);">
+                    <span style="font-size: 14px;">✨</span> Fetches ANY language model detected in VS Code
+                </div>
+                <div style="margin-top: 12px; font-size: 13px; opacity: 0.9; font-family: var(--vscode-editor-font-family); display: flex; align-items: center; gap: 8px;">
                     <span style="opacity: 0.6;">Running on:</span>
                     <strong id="server-url">${url}</strong>
                     <button id="btn-copy-url" class="secondary" style="padding: 4px 8px; font-size: 11px; min-width: auto;" title="Copy URL">📋 Copy</button>
@@ -1792,21 +1963,19 @@ print(response.choices[0].message.content)\`;
                         </label>
                     </div>
 
-                    <div style="margin-top: 16px;">
-                        <div style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; align-items: flex-end;">
-                            <div style="flex: 1; min-width: 120px;">
-                                <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">HOST</span>
-                                <input type="text" id="custom-host" value="${config.host}" placeholder="127.0.0.1" style="width: 100%; box-sizing: border-box;">
+                    <div style="margin-top: 20px;">
+                        <div style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; align-items: flex-end;">
+                            <div style="flex: 1; min-width: 140px;">
+                                <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 8px; opacity: 0.8; letter-spacing: 0.05em;">HOST</span>
+                                <input type="text" id="custom-host" value="${config.host}" placeholder="127.0.0.1">
                             </div>
                             <div style="width: 80px; flex-shrink: 0;">
-                                <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">PORT</span>
-                                <input type="number" id="custom-port" value="${config.port}" style="width: 100%; box-sizing: border-box;">
-                            </div>
-                            <div style="flex-shrink: 0;">
-                                <button class="secondary" id="btn-set-host" style="height: 32px; padding: 0 16px; white-space: nowrap;">Apply</button>
+                                <span style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 8px; opacity: 0.8; letter-spacing: 0.05em;">PORT</span>
+                                <input type="number" id="custom-port" value="${config.port}" style="width: 100%; box-sizing: border-box; text-align: center;">
                             </div>
                         </div>
-                        <div style="display: flex; gap: 12px;">
+                        <button id="btn-save-host" class="secondary" style="width: auto; height: 32px; font-size: 13px;">Save Host/Port</button>
+                        <div style="display: flex; gap: 12px; margin-top: 12px;">
                             <button class="secondary" id="btn-host-local" style="flex: 1;">Bind Localhost</button>
                             <button class="secondary" id="btn-host-lan" style="flex: 1;">Bind LAN (0.0.0.0)</button>
                         </div>
@@ -1826,24 +1995,29 @@ print(response.choices[0].message.content)\`;
                         </label>
                     </div>
 
-                    <div style="margin-top: 12px;">
-                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                            <input type="password" id="api-key-input" value="${config.apiKey || ''}" placeholder="sk-..." style="flex: 1;">
-                            <button class="secondary" id="btn-show-key" style="width: 40px;" title="Show/Hide Key">👁</button>
-                            <button class="secondary" id="btn-copy-key" style="width: 40px;" title="Copy Key">📋</button>
-                        </div>
-                        <div class="actions">
-                            <button class="secondary" id="btn-generate-key">Generate New Key</button>
-                            <button class="secondary" id="btn-set-apikey">Set Manual Key</button>
-                        </div>
-                    </div>
-
                     <div style="margin-top: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
                         <span style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 8px;">RATE LIMIT</span>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             <input type="number" id="rate-limit-input" value="${config.rateLimitPerMinute || 0}" placeholder="0 = unlimited" style="width: 100px !important;">
                             <span class="muted">req/min</span>
                             <button class="secondary" id="btn-set-ratelimit" style="width: auto; padding: 6px 16px;">Set</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--ui-border-soft);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="font-size: 13px; font-weight: 600;">API Key Protection</span>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="btn-generate-key" class="secondary" style="width: auto; height: 28px; padding: 0 12px; font-size: 12px;" title="Generate new random key">Generate</button>
+                                <button id="btn-copy-key" class="secondary" style="width: auto; height: 28px; padding: 0 12px; font-size: 12px;" title="Copy to clipboard">Copy</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px;">
+                            <input type="text" id="api-key-input" value="${config.apiKey || ''}" placeholder="Leave empty for NO AUTH (Insecure)" style="flex: 1; font-family: var(--vscode-editor-font-family); letter-spacing: 1px;">
+                            <button id="btn-save-key" style="width: 80px;">Save</button>
+                        </div>
+                        <div style="font-size: 12px; opacity: 0.6; margin-top: 8px;">
+                            If set, clients must send <code style="background: color-mix(in srgb, var(--ui-text-muted) 20%, transparent); padding: 2px 4px; border-radius: 4px;">Authorization: Bearer &lt;key&gt;</code>
                         </div>
                     </div>
 
@@ -1930,7 +2104,7 @@ print(response.choices[0].message.content)\`;
             </div>
 
             <div id="tunnel-status-area" style="margin-bottom: 16px;">
-                ${status.tunnel?.running ? `
+                ${status.tunnel?.running ? (status.tunnel?.url ? `
                     <div style="background: color-mix(in srgb, var(--vscode-testing-iconPassed) 15%, transparent); border: 1px solid var(--vscode-testing-iconPassed); border-radius: 8px; padding: 16px;">
                         <div style="font-size: 11px; font-weight: 600; opacity: 0.8; margin-bottom: 8px;">🟢 TUNNEL ACTIVE</div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -1942,6 +2116,14 @@ print(response.choices[0].message.content)\`;
                         </div>
                     </div>
                 ` : `
+                    <div style="background: color-mix(in srgb, var(--vscode-charts-blue) 15%, transparent); border: 1px solid var(--vscode-charts-blue); border-radius: 8px; padding: 16px;">
+                        <div style="font-size: 11px; font-weight: 600; opacity: 0.8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <div class="status-dot" style="background: var(--vscode-charts-blue); width: 8px; height: 8px; border-radius: 50%;"></div>
+                            STARTING TUNNEL...
+                        </div>
+                        <div class="muted" style="font-size: 12px;">Requesting Cloudflare tunnel URL...</div>
+                    </div>
+                `) : `
                     <div style="background: var(--vscode-textBlockQuote-background); border: 1px solid var(--vscode-widget-border); border-radius: 8px; padding: 16px; text-align: center;">
                         <div class="muted" style="font-size: 12px;">Tunnel not active. Click "Go Live" to expose your API to the internet.</div>
                     </div>
@@ -2277,50 +2459,46 @@ print(response.choices[0].message.content)\`;
             }
         };
 
-        document.getElementById('btn-set-apikey').onclick = function() {
-            var v = document.getElementById('api-key-input').value.trim();
-            currentApiKey = v;
-            vscode.postMessage({ type: 'setApiKey', value: v });
-            if (v) {
-                document.getElementById('toggle-auth').checked = true;
-            }
-        };
-
-        document.getElementById('btn-generate-key').onclick = function() {
-            var key = 'sk-' + Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('');
-            document.getElementById('api-key-input').value = key;
-            document.getElementById('api-key-input').type = 'text';
-            currentApiKey = key;
-            vscode.postMessage({ type: 'setApiKey', value: key });
-            document.getElementById('toggle-auth').checked = true;
-        };
-
-        document.getElementById('btn-copy-key').onclick = function() {
-            var input = document.getElementById('api-key-input');
-            var keyToCopy = input.value.trim() || currentApiKey;
-            if (keyToCopy) {
-                navigator.clipboard.writeText(keyToCopy).then(function() {
-                    var btn = document.getElementById('btn-copy-key');
-                    btn.textContent = '✓';
-                    setTimeout(function() { btn.textContent = '📋'; }, 1500);
-                });
-            }
-        };
-
-        document.getElementById('btn-show-key').onclick = function() {
-            var input = document.getElementById('api-key-input');
-            var btn = document.getElementById('btn-show-key');
-            if (input.type === 'password') {
-                input.type = 'text';
-                if (!input.value && currentApiKey) {
-                    input.value = currentApiKey;
+        const btnSaveKey = document.getElementById('btn-save-key');
+        if (btnSaveKey) {
+            btnSaveKey.onclick = function() {
+                var v = document.getElementById('api-key-input').value.trim();
+                currentApiKey = v;
+                vscode.postMessage({ type: 'setApiKey', value: v });
+                if (v) {
+                    document.getElementById('toggle-auth').checked = true;
                 }
-                btn.textContent = '🙈';
-            } else {
-                input.type = 'password';
-                btn.textContent = '👁';
-            }
-        };
+            };
+        }
+
+        const btnGenerateKey = document.getElementById('btn-generate-key');
+        if (btnGenerateKey) {
+            btnGenerateKey.onclick = function() {
+                var key = 'sk-' + Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('');
+                document.getElementById('api-key-input').value = key;
+                document.getElementById('api-key-input').type = 'text';
+                currentApiKey = key;
+                vscode.postMessage({ type: 'setApiKey', value: key });
+                const toggleAuth = document.getElementById('toggle-auth');
+                if (toggleAuth) toggleAuth.checked = true;
+            };
+        }
+
+        const btnCopyKey = document.getElementById('btn-copy-key');
+        if (btnCopyKey) {
+            btnCopyKey.onclick = function() {
+                var input = document.getElementById('api-key-input');
+                var keyToCopy = input ? input.value.trim() : currentApiKey;
+                if (!keyToCopy) keyToCopy = currentApiKey;
+                if (keyToCopy) {
+                    navigator.clipboard.writeText(keyToCopy).then(function() {
+                        var originalText = btnCopyKey.textContent;
+                        btnCopyKey.textContent = '✓';
+                        setTimeout(function() { btnCopyKey.textContent = originalText; }, 1500);
+                    });
+                }
+            };
+        }
 
         document.getElementById('btn-set-ratelimit').onclick = function() {
             var v = document.getElementById('rate-limit-input').value;
@@ -2544,30 +2722,39 @@ print(response.choices[0].message.content)\`;
             };
         }
 
-        document.getElementById('btn-set-host').onclick = function() {
-            var host = document.getElementById('custom-host').value;
-            var port = document.getElementById('custom-port').value;
-            if (host) vscode.postMessage({ type: 'setHost', value: host });
-            if (port) vscode.postMessage({ type: 'setPort', value: Number(port) });
-        };
 
-        // btn-set-port removed - consolidated with btn-set-host Apply button
+        const btnSaveHost = document.getElementById('btn-save-host');
+        if (btnSaveHost) {
+            btnSaveHost.onclick = function() {
+                var h = document.getElementById('custom-host').value;
+                var p = document.getElementById('custom-port').value;
+                vscode.postMessage({ type: 'setHostPort', value: { host: h, port: Number(p) || 3000 } });
+            };
+        }
 
-        document.getElementById('btn-set-timeout').onclick = function() {
-            var val = document.getElementById('timeout-input').value;
-            vscode.postMessage({ type: 'setRequestTimeout', value: Number(val) });
-        };
+        const btnSetTimeout = document.getElementById('btn-set-timeout');
+        if (btnSetTimeout) {
+            btnSetTimeout.onclick = function() {
+                var val = document.getElementById('timeout-input').value;
+                vscode.postMessage({ type: 'setRequestTimeout', value: Number(val) });
+            };
+        }
 
-        document.getElementById('btn-set-payload').onclick = function() {
-            var val = document.getElementById('payload-input').value;
-            vscode.postMessage({ type: 'setMaxPayloadSize', value: Number(val) });
-        };
+        const btnSetPayload = document.getElementById('btn-set-payload');
+        if (btnSetPayload) {
+            btnSetPayload.onclick = function() {
+                var val = document.getElementById('payload-input').value;
+                vscode.postMessage({ type: 'setMaxPayloadSize', value: Number(val) });
+            };
+        }
 
-        document.getElementById('btn-set-connections').onclick = function() {
-            var val = document.getElementById('connections-input').value;
-            vscode.postMessage({ type: 'setMaxConnectionsPerIp', value: Number(val) });
-        };
-
+        const btnSetConnections = document.getElementById('btn-set-connections');
+        if (btnSetConnections) {
+            btnSetConnections.onclick = function() {
+                var val = document.getElementById('connections-input').value;
+                vscode.postMessage({ type: 'setMaxConnectionsPerIp', value: Number(val) });
+            };
+        }
         document.getElementById('btn-set-concurrency').onclick = function() {
             var val = document.getElementById('concurrency-input').value;
             vscode.postMessage({ type: 'setMaxConcurrency', value: Number(val) });

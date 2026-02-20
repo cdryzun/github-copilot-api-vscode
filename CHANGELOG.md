@@ -4,6 +4,17 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.9.0] - 2026-02-20
+
+### Added
+- **Modern Dashboard UI:** Complete visual overhaul with glassmorphism-inspired cards, refined color palettes adapting to VS Code themes, and smooth interactive hover effects.
+- **Multi-Model Support Badge:** Highlighted capability in the dashboard hero section noting the Gateway can fetch ANY language model detected in VS Code.
+- **Wiki Refinements:** Redesigned documentation tabs to a modern pill-shaped style and improved code block typography.
+
+### Fixed
+- **Live Feed & Activities:** Resolved JavaScript reference errors that broke the real-time Live Log and Recent Activity features.
+- **Cloudflare Tunnel Status:** Fixed a bug where starting a tunnel displayed the literal string "null" instead of a proper "Starting" state in the dashboard.
+
 ## [2.7.0] - 2026-02-15
 
 ### Added
