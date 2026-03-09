@@ -52469,7 +52469,8 @@ var CopilotApiGateway = class {
     });
     if (this.config.apiKey && url2.pathname !== "/health") {
       const authHeader = req.headers["authorization"];
-      const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      const xApiKey = req.headers["x-api-key"];
+      const providedKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : typeof xApiKey === "string" ? xApiKey : null;
       if (providedKey !== this.config.apiKey) {
         this.logRequest(requestId, req.method || "UNKNOWN", url2.pathname, 401, Date.now() - requestStart, {
           requestHeaders: req.headers
@@ -52969,12 +52970,13 @@ var CopilotApiGateway = class {
   }
   async processStreamingAnthropicMessages(payload, req, res, logRequestId, logRequestStart) {
     const messages = [];
-    if (payload.system) {
-      messages.push(vscode4.LanguageModelChatMessage.User(this.redactPromptString(payload.system)));
+    const systemText = typeof payload.system === "string" ? payload.system : Array.isArray(payload.system) ? payload.system.map((b) => b.text || "").join("\n") : "";
+    if (systemText) {
+      messages.push(vscode4.LanguageModelChatMessage.User(this.redactPromptString(systemText)));
     }
     for (const msg of payload.messages) {
       const role = msg.role === "user" ? vscode4.LanguageModelChatMessageRole.User : vscode4.LanguageModelChatMessageRole.Assistant;
-      const content = typeof msg.content === "string" ? msg.content : msg.content.map((c) => c.text).join(" ");
+      const content = this.flattenMessageContent(msg.content);
       const redactedContent = this.redactPromptString(content);
       if (role === vscode4.LanguageModelChatMessageRole.User) {
         messages.push(vscode4.LanguageModelChatMessage.User(redactedContent));
@@ -53021,7 +53023,18 @@ var CopilotApiGateway = class {
       if (!lmModel) {
         throw new ApiError(404, `Model "${resolvedModel}" not found. Available models: ${copilotModels.map((m) => m.id).join(", ")}`, "invalid_request_error", "model_not_found");
       }
-      const response = await lmModel.sendRequest(messages, {}, cts.token);
+      const streamOptions = {};
+      if (payload.tools && payload.tools.length > 0) {
+        streamOptions.tools = payload.tools.map((t) => ({
+          name: t.name,
+          description: t.description || "",
+          inputSchema: t.input_schema
+        }));
+        const tc = payload.tool_choice;
+        const tcType = typeof tc === "string" ? tc : tc?.type;
+        streamOptions.toolMode = tcType === "any" || tcType === "tool" ? vscode4.LanguageModelChatToolMode.Required : vscode4.LanguageModelChatToolMode.Auto;
+      }
+      const response = await lmModel.sendRequest(messages, streamOptions, cts.token);
       res.write(`event: message_start
 data: ${JSON.stringify({
         type: "message_start",
@@ -53046,6 +53059,8 @@ data: ${JSON.stringify({
       })}
 
 `);
+      let contentBlockIndex = 0;
+      let hasToolCalls = false;
       for await (const part of response.stream) {
         if (cts.token.isCancellationRequested) {
           break;
@@ -53055,25 +53070,58 @@ data: ${JSON.stringify({
           res.write(`event: content_block_delta
 data: ${JSON.stringify({
             type: "content_block_delta",
-            index: 0,
+            index: contentBlockIndex,
             delta: { type: "text_delta", text: part.value }
           })}
+
+`);
+        } else if (part instanceof vscode4.LanguageModelToolCallPart) {
+          if (!hasToolCalls) {
+            res.write(`event: content_block_stop
+data: ${JSON.stringify({ type: "content_block_stop", index: contentBlockIndex })}
+
+`);
+            hasToolCalls = true;
+          }
+          contentBlockIndex++;
+          const toolCallId = `toolu_${(0, import_crypto.randomUUID)().replace(/-/g, "").slice(0, 24)}`;
+          const argsStr = typeof part.input === "string" ? part.input : JSON.stringify(part.input);
+          res.write(`event: content_block_start
+data: ${JSON.stringify({
+            type: "content_block_start",
+            index: contentBlockIndex,
+            content_block: { type: "tool_use", id: toolCallId, name: part.name, input: {} }
+          })}
+
+`);
+          res.write(`event: content_block_delta
+data: ${JSON.stringify({
+            type: "content_block_delta",
+            index: contentBlockIndex,
+            delta: { type: "input_json_delta", partial_json: argsStr }
+          })}
+
+`);
+          res.write(`event: content_block_stop
+data: ${JSON.stringify({ type: "content_block_stop", index: contentBlockIndex })}
 
 `);
         }
       }
       if (!cts.token.isCancellationRequested) {
-        res.write(`event: content_block_stop
+        if (!hasToolCalls) {
+          res.write(`event: content_block_stop
 data: ${JSON.stringify({
-          type: "content_block_stop",
-          index: 0
-        })}
+            type: "content_block_stop",
+            index: 0
+          })}
 
 `);
+        }
         res.write(`event: message_delta
 data: ${JSON.stringify({
           type: "message_delta",
-          delta: { stop_reason: "end_turn", stop_sequence: null },
+          delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn", stop_sequence: null },
           usage: { output_tokens: 0 }
         })}
 
@@ -53166,7 +53214,7 @@ data: ${JSON.stringify({ type: "error", error: { type: apiError.code || "api_err
       }
       const lmMessages = [];
       for (const msg of messages) {
-        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        const content = this.flattenMessageContent(msg.content);
         switch (msg.role) {
           case "system":
             lmMessages.push(vscode4.LanguageModelChatMessage.User(`[System]: ${content}`));
@@ -53743,12 +53791,13 @@ data: ${JSON.stringify({
   }
   async processAnthropicMessages(payload) {
     const messages = [];
-    if (payload.system) {
-      messages.push(vscode4.LanguageModelChatMessage.User(this.redactPromptString(payload.system)));
+    const systemTextNS = typeof payload.system === "string" ? payload.system : Array.isArray(payload.system) ? payload.system.map((b) => b.text || "").join("\n") : "";
+    if (systemTextNS) {
+      messages.push(vscode4.LanguageModelChatMessage.User(this.redactPromptString(systemTextNS)));
     }
     for (const msg of payload.messages) {
       const role = msg.role === "user" ? vscode4.LanguageModelChatMessageRole.User : vscode4.LanguageModelChatMessageRole.Assistant;
-      const content = typeof msg.content === "string" ? msg.content : msg.content.map((c) => c.text).join(" ");
+      const content = this.flattenMessageContent(msg.content);
       const redactedContent = this.redactPromptString(content);
       if (role === vscode4.LanguageModelChatMessageRole.User) {
         messages.push(vscode4.LanguageModelChatMessage.User(redactedContent));
@@ -53757,17 +53806,6 @@ data: ${JSON.stringify({
       }
     }
     const resolvedModel = this.resolveModel(payload.model);
-    const promptStr = messages.map((m) => {
-      if (typeof m.content === "string") {
-        return m.content;
-      }
-      return m.content.map((p) => {
-        if ("text" in p) {
-          return p.text;
-        }
-        return "";
-      }).join(" ");
-    }).join("\n");
     const text = await this.runWithConcurrency(async () => {
       const copilotModels = await vscode4.lm.selectChatModels();
       if (!copilotModels || copilotModels.length === 0) {
@@ -53789,11 +53827,11 @@ data: ${JSON.stringify({
     let inputTokens = 0;
     let outputTokens = 0;
     try {
-      const promptStr2 = messages.map((m) => m.content).join(" ");
+      const promptStr = messages.map((m) => m.content).join(" ");
       const copilotModels = await vscode4.lm.selectChatModels();
       if (copilotModels && copilotModels.length > 0) {
         const lmModel = copilotModels[0];
-        inputTokens = await lmModel.countTokens(promptStr2);
+        inputTokens = await lmModel.countTokens(promptStr);
         outputTokens = await lmModel.countTokens(text || "");
       }
     } catch (e) {
@@ -54086,7 +54124,7 @@ IMPORTANT: You MUST respond with valid JSON only.No markdown, no explanation, ju
     }
     const lmMessages = [];
     for (const msg of chatMessages) {
-      const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      const content = this.flattenMessageContent(msg.content);
       switch (msg.role) {
         case "system":
           lmMessages.push(vscode4.LanguageModelChatMessage.User(`[System]: ${content} `));
@@ -54554,8 +54592,24 @@ ${text} `;
         if (typeof part === "string") {
           return part;
         }
-        if (part && typeof part === "object" && typeof part.text === "string") {
-          return String(part.text);
+        if (part && typeof part === "object") {
+          const p = part;
+          if (typeof p.text === "string") {
+            return p.text;
+          }
+          if (p.type === "tool_result") {
+            const c = p.content;
+            if (typeof c === "string") {
+              return c;
+            }
+            if (Array.isArray(c)) {
+              return c.map((cp) => cp.text || "").join("\n");
+            }
+            return "";
+          }
+          if (p.type === "tool_use") {
+            return `[Tool call: ${p.name}(${typeof p.input === "string" ? p.input : JSON.stringify(p.input)})]`;
+          }
         }
         return "";
       }).join("\n");
@@ -55762,7 +55816,7 @@ ${text} `;
   }
   setCorsHeaders(res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, x-requested-with");
+    res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, x-requested-with, x-api-key, anthropic-version, anthropic-beta");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   }
   checkRateLimit() {
