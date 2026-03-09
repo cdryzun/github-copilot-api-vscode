@@ -4,6 +4,22 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.10.0] - 2026-03-09
+
+### Added
+- **Claude Code Full Compatibility:** End-to-end support for Claude Code connecting via the Anthropic Messages API (`/v1/messages`).
+- **`x-api-key` Authentication:** Now accepts Anthropic SDK-style `x-api-key` header in addition to `Authorization: Bearer` — required for Claude Code with API key auth enabled.
+- **Tool Use in Anthropic Path:** The streaming Anthropic handler now passes tools to the VS Code LM API and emits proper `tool_use` SSE content blocks (`content_block_start` → `input_json_delta` → `content_block_stop`) with `stop_reason: "tool_use"`.
+- **`system` Prompt as Array:** Both streaming and non-streaming Anthropic handlers now accept `system` as an array of text blocks (`[{type:"text",text:"..."}]`) per the latest Anthropic SDK spec.
+- **`AnthropicContentBlock` Type:** Added explicit TypeScript union type for `text`, `tool_use`, and `tool_result` content blocks.
+- **Extended `AnthropicMessageRequest`:** Interface now includes `tools`, `tool_choice`, and array `system` fields.
+
+### Fixed
+- **Claude 500 Error — "Unexpected chat message content type llm 2":** Multi-part array message content (`[{type:"text",text:"..."}]`) was incorrectly `JSON.stringify`'d before being passed to the VS Code LM API. Now uses `flattenMessageContent()` across all three conversion paths (`processStreamingChatCompletion`, `invokeCopilotWithTools`, `processStreamingAnthropicMessages`).
+- **`tool_result` Content Blocks:** `flattenMessageContent()` now correctly extracts text from `tool_result` blocks in message history, allowing multi-turn tool conversations.
+- **`tool_use` Content Blocks:** Conversation history messages containing `tool_use` blocks are now formatted as human-readable summaries instead of silently dropped.
+- **CORS Headers:** Added `x-api-key`, `anthropic-version`, and `anthropic-beta` to `Access-Control-Allow-Headers` for full Anthropic SDK CORS compatibility.
+
 ## [2.9.0] - 2026-02-20
 
 ### Added
