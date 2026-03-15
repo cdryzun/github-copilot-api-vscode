@@ -718,6 +718,15 @@ for await (const chunk of stream) {
                     });
                 }
                 break;
+            case 'setCloudflaredPath':
+                if (typeof data.value === 'string') {
+                    void gateway.setCloudflaredPath(data.value).then(async () => {
+                        if (CopilotPanel.currentPanel) {
+                            CopilotPanel.currentPanel.webview.html = await CopilotPanel.getPanelHtml(CopilotPanel.currentPanel.webview, gateway);
+                        }
+                    });
+                }
+                break;
             case 'setMaxConcurrency':
                 if (typeof data.value === 'number') {
                     void gateway.setMaxConcurrency(data.value).then(async () => {
@@ -2103,6 +2112,14 @@ print(response.choices[0].message.content)\`;
                 </ul>
             </div>
 
+            <div style="margin-bottom: 16px; border-top: 1px solid var(--vscode-widget-border); padding-top: 16px;">
+                <div style="font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.8;">CLOUDFLARED BINARY PATH (OPTIONAL)</div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="cloudflared-path-input" value="${config.cloudflaredPath || ''}" placeholder="Leave empty for auto-download or PATH" style="flex: 1; min-width: 200px;">
+                    <button class="secondary" id="btn-set-cloudflared-path" style="width: auto; padding: 4px 12px; font-size: 11px;">Save Path</button>
+                </div>
+            </div>
+
             <div id="tunnel-status-area" style="margin-bottom: 16px;">
                 ${status.tunnel?.running ? (status.tunnel?.url ? `
                     <div style="background: color-mix(in srgb, var(--vscode-testing-iconPassed) 15%, transparent); border: 1px solid var(--vscode-testing-iconPassed); border-radius: 8px; padding: 16px;">
@@ -2753,6 +2770,14 @@ print(response.choices[0].message.content)\`;
             btnSetConnections.onclick = function() {
                 var val = document.getElementById('connections-input').value;
                 vscode.postMessage({ type: 'setMaxConnectionsPerIp', value: Number(val) });
+            };
+        }
+
+        const btnSetCloudflaredPath = document.getElementById('btn-set-cloudflared-path');
+        if (btnSetCloudflaredPath) {
+            btnSetCloudflaredPath.onclick = function() {
+                var val = document.getElementById('cloudflared-path-input').value;
+                vscode.postMessage({ type: 'setCloudflaredPath', value: String(val).trim() });
             };
         }
         document.getElementById('btn-set-concurrency').onclick = function() {

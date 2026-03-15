@@ -299,6 +299,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable or disable MCP support globally."
+        },
+        "githubCopilotApi.tunnel.cloudflaredPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional custom path to the cloudflared executable. If empty, the extension will attempt to use cloudflared from your system PATH, or download it automatically."
         }
       }
     }

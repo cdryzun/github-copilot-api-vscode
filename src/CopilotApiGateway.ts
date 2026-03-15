@@ -73,6 +73,7 @@ export interface ApiServerConfig {
 	maxPayloadSizeMb: number
 	maxConnectionsPerIp: number
 	mcpEnabled: boolean
+	cloudflaredPath: string
 }
 
 // Request history entry
@@ -951,6 +952,10 @@ export class CopilotApiGateway implements vscode.Disposable {
 		await this.updateServerConfig({ maxConnectionsPerIp: normalized });
 	}
 
+	public async setCloudflaredPath(path: string): Promise<void> {
+		await this.updateServerConfig({ cloudflaredPath: path });
+	}
+
 	public async setMaxConcurrency(limit: number): Promise<void> {
 		const normalized = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 4;
 		await this.updateServerConfig({ maxConcurrentRequests: normalized });
@@ -1005,25 +1010,52 @@ export class CopilotApiGateway implements vscode.Disposable {
 				fs.mkdirSync(globalStoragePath, { recursive: true });
 			}
 
-			const cloudflaredBin = path.join(
-				globalStoragePath,
-				process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
-			);
+			let cloudflaredBin = '';
+			const customPath = this.config.cloudflaredPath;
 
-			// Download the binary if it doesn't exist
-			if (!fs.existsSync(cloudflaredBin)) {
-				this.logInfo('Cloudflared binary not found, downloading...');
+			// 1. Check custom configured path
+			if (customPath && fs.existsSync(customPath)) {
+				this.logInfo(`Using custom cloudflared path from configuration: ${customPath}`);
+				cloudflaredBin = customPath;
+			}
+			// 2. Check system PATH
+			else {
+				const { execSync } = await import('child_process');
 				try {
-					await install(cloudflaredBin);
-					this.logInfo('Cloudflared binary downloaded successfully');
-				} catch (downloadError) {
-					const errMsg = downloadError instanceof Error ? downloadError.message : String(downloadError);
-					this.logError('Failed to download cloudflared binary', downloadError);
-					return { success: false, error: `Failed to download cloudflared: ${errMsg}. Check your internet connection.` };
+					const sysPath = execSync(process.platform === 'win32' ? 'where cloudflared' : 'which cloudflared').toString().split('\n')[0].trim();
+					if (sysPath && fs.existsSync(sysPath)) {
+						this.logInfo(`Found cloudflared in system PATH: ${sysPath}`);
+						cloudflaredBin = sysPath;
+					}
+				} catch (e) {
+					// cloudflared not in PATH
 				}
 			}
 
-			this.logInfo(`Using cloudflared binary: ${cloudflaredBin}`);
+			// 3. Fallback to downloading or using cached binary
+			if (!cloudflaredBin) {
+				cloudflaredBin = path.join(
+					globalStoragePath,
+					process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
+				);
+
+				if (!fs.existsSync(cloudflaredBin)) {
+					this.logInfo('Cloudflared binary not found locally or in PATH, downloading...');
+					try {
+						await install(cloudflaredBin);
+						this.logInfo('Cloudflared binary downloaded successfully');
+					} catch (downloadError) {
+						const errMsg = downloadError instanceof Error ? downloadError.message : String(downloadError);
+						this.logError('Failed to download cloudflared binary', downloadError);
+						return { success: false, error: `Failed to download cloudflared: ${errMsg}. Check your internet connection.` };
+					}
+				} else {
+					this.logInfo(`Using cached cloudflared binary: ${cloudflaredBin}`);
+				}
+			} else {
+				this.logInfo(`Using chosen cloudflared binary: ${cloudflaredBin}`);
+			}
+
 			use(cloudflaredBin);
 
 			const localUrl = `http://${this.config.host === '0.0.0.0' ? '127.0.0.1' : this.config.host}:${this.config.port}`;
@@ -5404,6 +5436,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 		if (patch.maxConnectionsPerIp !== undefined) {
 			updates.push(Promise.resolve(config.update('server.maxConnectionsPerIp', patch.maxConnectionsPerIp, vscode.ConfigurationTarget.Global)));
 		}
+		if (patch.cloudflaredPath !== undefined) {
+			updates.push(Promise.resolve(config.update('tunnel.cloudflaredPath', patch.cloudflaredPath, vscode.ConfigurationTarget.Global)));
+		}
 		if (patch.redactionPatterns !== undefined) {
 			updates.push(Promise.resolve(config.update('server.redactionPatterns', patch.redactionPatterns, vscode.ConfigurationTarget.Global)));
 		}
@@ -5633,12 +5668,13 @@ function getServerConfig(): ApiServerConfig {
 	const maxPayloadSizeMb = configuration.get<number>('server.maxPayloadSizeMb', 1);
 	const maxConnectionsPerIp = configuration.get<number>('server.maxConnectionsPerIp', 10);
 	const mcpEnabled = vscode.workspace.getConfiguration('githubCopilotApi.mcp').get<boolean>('enabled', true);
+	const cloudflaredPath = vscode.workspace.getConfiguration('githubCopilotApi.tunnel').get<string>('cloudflaredPath', '').trim();
 
 	return {
 		enabled, enableHttp, enableWebSocket, enableHttps, tlsCertPath, tlsKeyPath, host, port, maxConcurrentRequests,
 		defaultModel, apiKey, enableLogging, rateLimitPerMinute, defaultSystemPrompt,
 		redactionPatterns, ipAllowlist, requestTimeoutSeconds, maxPayloadSizeMb, maxConnectionsPerIp,
-		mcpEnabled
+		mcpEnabled, cloudflaredPath
 	};
 }
 
