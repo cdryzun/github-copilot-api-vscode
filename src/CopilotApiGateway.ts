@@ -3412,7 +3412,7 @@ export class CopilotApiGateway implements vscode.Disposable {
 						try {
 							parsedInput = JSON.parse(part.input || '{}') as Record<string, unknown>;
 						} catch (e) {
-							console.error('Invalid JSON in tool input:', part.input);
+							console.error('Invalid JSON in tool input for tool:', part.name, '| input length:', String(part.input).length);
 							parsedInput = {};
 						}
 					} else {
