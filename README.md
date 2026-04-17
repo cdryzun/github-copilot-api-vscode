@@ -249,6 +249,22 @@ For advanced options (TLS, IP allowlisting, audit logging), see [CONTRIBUTING.md
 
 ---
 
+## 📈 Trending
+
+<details>
+  <summary>View Star History</summary>
+  
+  <a href="https://star-history.com/#suhaibbinyounis/github-copilot-api-vscode&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=suhaibbinyounis/github-copilot-api-vscode&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=suhaibbinyounis/github-copilot-api-vscode&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=suhaibbinyounis/github-copilot-api-vscode&type=Date" />
+    </picture>
+  </a>
+</details>
+
+---
+
 ## 🛡️ Trust & Transparency
 
 This project is **100% free and open-source** under the [MIT License](LICENSE).
