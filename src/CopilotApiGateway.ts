@@ -3533,11 +3533,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 		let outputTokens = 0;
 		try {
 			const promptStr = messages.map(m => m.content).join(' ');
-			const copilotModels = await vscode.lm.selectChatModels();
-			if (copilotModels && copilotModels.length > 0) {
-				const lmModel = copilotModels[0];
-				inputTokens = await lmModel.countTokens(promptStr);
-				outputTokens = await lmModel.countTokens(text || '');
+			if (selectedModel) {
+				inputTokens = await selectedModel.countTokens(promptStr);
+				outputTokens = await selectedModel.countTokens(text || '');
 			}
 		} catch (e) {
 			console.error('Google token counting failed:', e);
@@ -3677,9 +3675,8 @@ export class CopilotApiGateway implements vscode.Disposable {
 		let promptTokens = 0;
 		let completionTokens = 0;
 		try {
-			const copilotModels = await vscode.lm.selectChatModels();
-			if (copilotModels && copilotModels.length > 0) {
-				const lmModel = copilotModels[0];
+			if (selectedModel) {
+				const lmModel = selectedModel;
 
 				// Count input tokens for the whole history
 				const inputStr = messages.map(m => {
@@ -3928,17 +3925,14 @@ export class CopilotApiGateway implements vscode.Disposable {
 		let promptTokens = 0;
 		let completionTokens = 0;
 		try {
-			const copilotModels = await vscode.lm.selectChatModels();
-			if (copilotModels && copilotModels.length > 0) {
-				const lmModel = copilotModels[0];
-
+			if (selectedModel) {
 				// Count input tokens
 				const inputStr = prompt;
-				promptTokens = await lmModel.countTokens(inputStr);
+				promptTokens = await selectedModel.countTokens(inputStr);
 
 				// Count output tokens
 				const outputStr = text || '';
-				completionTokens = await lmModel.countTokens(outputStr);
+				completionTokens = await selectedModel.countTokens(outputStr);
 			}
 		} catch (e) {
 			console.error('Token counting failed:', e);
@@ -4469,10 +4463,16 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return familyMatch;
 		}
 
-		// 3. Claude model alias fallback: strip date suffix (e.g. -20241022) and normalize
-		// separators so "claude-3-5-sonnet-20241022" matches "claude-3.5-sonnet" etc.
-		const dateStripped = requested.replace(/-\d{8}$/, '');
-		const normed = dateStripped.replace(/\./g, '-');
+		// 3. Fallback matching: strip vendor-specific version suffixes and normalize
+		// claude-3-5-sonnet-20241022 -> claude-3-5-sonnet
+		// gemini-1.5-pro-002 -> gemini-1.5-pro
+		// gemini-1.5-pro-preview-0409 -> gemini-1.5-pro
+		const cleaned = requested
+			.replace(/-\d{8}$/, '')           // Claude date suffix
+			.replace(/-preview-\d{4}$/, '')   // Gemini preview suffix
+			.replace(/-\d{3}$/, '');           // Gemini version suffix
+		
+		const normed = cleaned.replace(/\./g, '-');
 		const fuzzyMatch = sortedModels.find(m => {
 			const mId = m.id.toLowerCase().replace('copilot-', '').replace(/\./g, '-');
 			const mFamily = (m.family || '').toLowerCase().replace('copilot-', '').replace(/\./g, '-');
