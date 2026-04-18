@@ -3839,7 +3839,9 @@ export class CopilotApiGateway implements vscode.Disposable {
 		}
 
 		// Build request options
-		const options: vscode.LanguageModelChatRequestOptions = {};
+		const options: vscode.LanguageModelChatRequestOptions = {
+			justification: 'Copilot API Gateway'
+		};
 
 		if (tools && tools.length > 0) {
 			options.tools = tools;
