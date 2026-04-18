@@ -4413,6 +4413,16 @@ export class CopilotApiGateway implements vscode.Disposable {
 			return p.thinking;
 		}
 		
+		// If we reach here, we are about to silently drop an unrecognized part!
+		// Log it to the Output Channel so users can share it in GitHub issues.
+		try {
+			if (Object.keys(p).length > 0) {
+				this.logInfo(`[Diagnostic] Unknown stream part ignored: ${JSON.stringify(p)}`);
+			}
+		} catch (e) {
+			this.logInfo(`[Diagnostic] Unknown unstringifiable stream part ignored.`);
+		}
+		
 		return undefined;
 	}
 
