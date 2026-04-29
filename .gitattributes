@@ -1,0 +1,15 @@
+# Set default behavior for all files
+* text=auto eol=lf
+
+# Exclude generated/build files from GitHub language statistics
+dist/** linguist-generated=true
+out/** linguist-generated=true
+package-lock.json linguist-generated=true
+.tsbuildinfo linguist-generated=true
+
+# Exclude dependencies from GitHub language statistics
+node_modules/** linguist-vendored=true
+
+# Treat website and media assets as documentation/vendored so they don't skew the language stats
+website/** linguist-documentation=true
+media/** linguist-vendored=true
