@@ -43,6 +43,7 @@
   <a href="https://github.com/suhaibbinyounis/github-copilot-api-vscode/commits/main">
     <img src="https://img.shields.io/github/last-commit/suhaibbinyounis/github-copilot-api-vscode/main?style=flat-square&logo=github&color=teal" alt="Last Commit">
   </a>
+  <img src="media/coverage.svg" alt="Coverage">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
 </p>
 
