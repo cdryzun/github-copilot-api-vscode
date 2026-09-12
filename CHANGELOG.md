@@ -4,7 +4,31 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.15.0] - 2026-09-12
+
+### Added
+- **Cursor compatibility:** Model resolution now understands `cursor/`, `cursor-`, `copilot-`, and `openai/` prefixed model names — requests from Cursor and similar clients automatically resolve to the correct underlying Copilot model.
+- **New `src/compatibility.ts` module:** Exports `normalizeModelLookupKey`, `buildCursorCompatibleAlias`, and `flattenOpenAICompatibleMessageContent` as reusable helpers for future API surface work.
+- **Richer `/v1/models` response:** Each model entry now includes `aliased_model_id` and a `capabilities` object (`chat_completion`, `text_completion`, `streaming`, `token_counting`).
+- **Multimodal content flattening:** Unified content-flattener handles `image`, `tool_use`, `tool_result`, `input_image`, and `image_url` content blocks consistently across all API surfaces.
+
+### Fixed
+- **Anthropic tool call history:** Structured `tool_use` / `tool_result` message pairs are now correctly mapped to `LanguageModelToolCallPart` / `LanguageModelToolResultPart` in both streaming and non-streaming `/v1/messages` flows — eliminating dropped tool results in multi-turn Anthropic conversations.
+- **Google streaming:** Each content chunk now carries `finishReason: 'STOP'` instead of `null`; removed a spurious empty final chunk that caused some clients to error.
+
+### Changed
+- **`/v1/tools/call` now requires both `server` and `name`** (breaking for callers that previously omitted `server` to invoke VSCode built-in tools directly — those calls now return 400).
+- `flattenMessageContent` internal method delegates to the shared `flattenOpenAICompatibleMessageContent` helper.
+
+### Removed
+- `anthropicToolPairs.ts` — its role is now handled by inline conversion logic in `CopilotApiGateway`.
+- `TelemetryService.ts` and associated Application Insights bundling.
+- `/v1/responses/` stub endpoints (GET / DELETE) — the gateway remains stateless.
+
+---
+
 ## [2.14.0] - 2026-05-18
+
 
 ### Added
 - **Comprehensive Telemetry:** Expanded from 7 sparse events to 15 rich telemetry helpers, giving deep observability via Azure Application Insights.
