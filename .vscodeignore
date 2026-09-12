@@ -1,14 +1,42 @@
+# Dev tooling
 .vscode/**
 .vscode-test/**
-out/**
-node_modules/**
-src/**
+.vscode-test.*
+.husky/**
+.gitattributes
 .gitignore
 .yarnrc
+.tsbuildinfo
+
+# Source & build inputs
+src/**
+out/**
+coverage/**
+node_modules/**
 esbuild.js
-vsc-extension-quickstart.md
+tsconfig.json
 **/tsconfig.json
+eslint.config.mjs
 **/eslint.config.mjs
 **/*.map
 **/*.ts
-**/.vscode-test.*
+
+# Tests & perf
+perf/**
+
+# Website
+website/**
+
+# GitHub config
+.github/**
+
+# Scratch / log files
+job_log.txt
+run_log.txt
+src_diff.txt
+pr86_diff.txt
+workflow.sh
+
+# Misc
+vsc-extension-quickstart.md
+demo.gif
