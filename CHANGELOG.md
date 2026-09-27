@@ -4,6 +4,16 @@ All notable changes to the "github-copilot-api-vscode" extension will be documen
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.15.1] - 2026-09-27
+
+### Fixed
+- **Structured tool-call history in OpenAI flows:** Assistant messages with `tool_calls` are now serialized as `LanguageModelToolCallPart` parts instead of plain text (`[Called function: ...]`). Tool result messages are serialized as `LanguageModelToolResultPart` preserving the original `tool_call_id` linkage. This prevents long-context conversations from biasing the model toward textual tool-call imitation. Applies to both streaming and non-streaming code paths. ([#171](https://github.com/suhaibbinyounis/github-copilot-api-vscode/issues/171))
+
+### Changed
+- **Dependencies:** `typescript-eslint` 8.61.1→8.70.0, `@modelcontextprotocol/sdk` 1.29.0→1.30.0, `cloudflared` 0.7.1→0.7.3, `eslint` 10.5.0→10.11.0, `@types/node` 26.5.1→26.6.2.
+
+---
+
 ## [2.15.0] - 2026-09-12
 
 ### Added
